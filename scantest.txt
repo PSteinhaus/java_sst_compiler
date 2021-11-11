@@ -1,0 +1,7 @@
+public class Test {
+    public void testfunktion(int n) {
+        return 4; [  /*
+                          dieser Kommentar sollte hoffentlich nicht auftauchen
+        **/
+    }
+}
