@@ -1,3 +1,19 @@
+mod input;
+mod scanner;
+
+#[macro_use]
+extern crate ouroboros;
+
+pub type SSTint = i32;
+
+use crate::input::Input;
+use crate::scanner::Scanner;
+use std::path;
+
 fn main() {
-    println!("Hello, world!");
+    let input = Input::new(path::PathBuf::from("scantest.txt")).unwrap();
+    let mut scanner = Scanner::new(input);
+    while let Some(token) = scanner.read_sym() {
+        println!("{:?}", token);
+    }
 }
