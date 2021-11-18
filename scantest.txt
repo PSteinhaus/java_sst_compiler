@@ -1,6 +1,10 @@
 class Test {
     public void testfunktion(int n) {
-        return 4;  /**
+        int b;
+        int c;
+        c = 10;
+        b = 2+c/4;
+        return b;  /**
                           dieser Kommentar sollte hoffentlich nicht auftauchen
         ***/
     }

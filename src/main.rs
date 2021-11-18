@@ -8,9 +8,9 @@ extern crate ouroboros;
 pub type SSTint = i32;
 
 use crate::input::Input;
+use crate::parser::Parser;
 use crate::scanner::Scanner;
 use std::path;
-use crate::parser::Parser;
 
 fn main() {
     let input = Input::new(path::PathBuf::from("scantest.txt")).unwrap();

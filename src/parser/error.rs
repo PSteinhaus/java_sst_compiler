@@ -88,14 +88,10 @@ impl Display for WrongToken {
             f,
             "expected token variants {:?} at line {}, position {},\
             actually got: {:?}",
-            self.expected_variants,
-            self.token.line,
-            self.token.pos,
-            self.token.token
+            self.expected_variants, self.token.line, self.token.pos, self.token.token
         )
     }
 }
-
 
 #[derive(Debug)]
 pub struct SymbolsNotFound {
@@ -104,9 +100,7 @@ pub struct SymbolsNotFound {
 
 impl SymbolsNotFound {
     pub fn new(expected_variants: Vec<Symbol>) -> Self {
-        Self {
-            expected_variants,
-        }
+        Self { expected_variants }
     }
 }
 

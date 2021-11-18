@@ -4,13 +4,17 @@
 
 mod error;
 
-use std::collections::VecDeque;
 use crate::input::{CPos, LNum};
 use crate::parser::error::*;
 use crate::scanner;
+use crate::scanner::Token::{
+    Comma, CurlyClose, CurlyOpen, Divide, Else, Equals, EqualsEquals, Final, If, Int, Larger,
+    LargerEqual, Minus, ParClose, ParOpen, Plus, Public, Return, Semicolon, Smaller, SmallerEqual,
+    Times, Void, While,
+};
 use crate::scanner::{TWithPos, Token};
+use std::collections::VecDeque;
 use std::mem::discriminant as d;
-use crate::scanner::Token::{Comma, CurlyClose, CurlyOpen, Divide, Else, Equals, EqualsEquals, Final, If, Int, Larger, LargerEqual, Minus, ParClose, ParOpen, Plus, Public, Return, Semicolon, Smaller, SmallerEqual, Times, Void, While};
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
@@ -55,7 +59,9 @@ impl<T: Clone> Queue<T> {
         }
     }
 
-    fn get_next(&self) -> Option<T> { self.queue.get(self.next_index).map(|t| (*t).clone()) }
+    fn get_next(&self) -> Option<T> {
+        self.queue.get(self.next_index).map(|t| (*t).clone())
+    }
 
     pub fn peek<I: Iterator<Item = T>>(&mut self, iter: &mut I) -> Option<T> {
         // if you've already stored a peek (i.e. the item found at the next index) return it
@@ -80,14 +86,16 @@ impl<T: Clone> Queue<T> {
     }
 
     /// Advance the index pointing to the next item by 1, without reading in new items.
-    pub fn advance(&mut self) { self.next_index += 1; }
-/*
-    /// Decrement the index pointing to the next item by n.
-    pub fn go_back(&mut self, n: usize) {
-        assert!(n <= self.next_index);
-        self.next_index -= n;
+    pub fn advance(&mut self) {
+        self.next_index += 1;
     }
-*/
+    /*
+        /// Decrement the index pointing to the next item by n.
+        pub fn go_back(&mut self, n: usize) {
+            assert!(n <= self.next_index);
+            self.next_index -= n;
+        }
+    */
     /// Remove all items previous to the next item (if any) from the buffer.
     pub fn clear_previous(&mut self) {
         self.queue.drain(..self.next_index).for_each(drop);
@@ -153,7 +161,22 @@ where
                 return Ok(());
             }
         }
-        Err(Box::new(SymbolsNotFound::new(expected_symbols.iter().map(|sym| (*sym).clone()).collect())))
+        Err(Box::new(SymbolsNotFound::new(
+            expected_symbols.iter().map(|sym| (*sym).clone()).collect(),
+        )))
+    }
+
+    /// Try interpreting the token stream as the given sequence of symbols.
+    /// Save the state of the buffer and restore it if you fail.
+    fn try_sequence(&mut self, expected_sequence: &[Symbol]) -> ParseResult {
+        let index_before = self.token_buffer.next_index;
+        for sym in expected_sequence {
+            if let Err(e) = self.try_symbol((*sym).clone()) {
+                self.token_buffer.next_index = index_before;
+                return Err(e);
+            }
+        }
+        Ok(())
     }
 
     /// Try interpreting the token stream as the given symbol.
@@ -176,41 +199,18 @@ where
                 }
                 Declarations => {
                     // start with the final declarations
-                    loop {
-                        let i_before = self.token_buffer.next_index;
-                        let mut ok = true;
-                        match self.try_symbol(Token(Final)) {
-                            Ok(()) => {
-                                if let Err(_) = self.try_symbol(Type) {ok = false;}
-                                if let Err(_) = self.try_symbol(Token(dummy_ident.clone())) {ok = false;}
-                                if let Err(_) = self.try_symbol(Token(Equals)) {ok = false;}
-                                if let Err(_) = self.try_symbol(Expression) {ok = false;}
-                                if let Err(_) = self.try_symbol(Token(Semicolon)) {ok = false;}
-                            }
-                            Err(_) => { ok = false; }
-                        }
-                        if !ok {
-                            // error: this actually wasn't a final declaration
-                            // return the buffer back to the state before trying to parse the token stream as one
-                            self.token_buffer.next_index = i_before;
-                            break;
-                        }
-                    }
+                    while let Ok(()) = self.try_sequence(&[
+                        Token(Final),
+                        Type,
+                        Token(dummy_ident.clone()),
+                        Token(Equals),
+                        Expression,
+                        Token(Semicolon),
+                    ]) {}
                     // then get the non-final declarations
-                    loop {
-                        let i_before = self.token_buffer.next_index;
-                        match self.try_symbol(Type) {
-                            Ok(()) => {
-                                self.try_symbol(Token(dummy_ident.clone()))?;
-                                self.try_symbol(Token(Semicolon))?;
-                            }
-                            Err(_) => {
-                                // error: this actually wasn't a non-final declaration
-                                // return the buffer back to the state before trying to parse the token stream as one
-                                self.token_buffer.next_index = i_before;
-                                break;
-                            }
-                        }
+                    while let Ok(()) =
+                        self.try_sequence(&[Type, Token(dummy_ident.clone()), Token(Semicolon)])
+                    {
                     }
                     // then get the method declarations
                     while let Ok(()) = self.try_symbol(MethodDeclaration) {}
@@ -227,27 +227,17 @@ where
                     self.try_symbol(FormalParameters)
                 }
                 MethodType => {
-                    if let Ok(()) = self.try_symbol(Token(Void)) { return Ok(()) }
-                    else { self.try_symbol(Type) }
+                    if let Ok(()) = self.try_symbol(Token(Void)) {
+                        return Ok(());
+                    } else {
+                        self.try_symbol(Type)
+                    }
                 }
                 FormalParameters => {
                     self.try_symbol(Token(ParOpen))?;
                     // find all fp_sections
                     if let Ok(()) = self.try_symbol(FpSection) {
-                        loop {
-                            let i_before = self.token_buffer.next_index;
-                            match self.try_symbol(Token(Comma)) {
-                                Ok(()) => {
-                                    self.try_symbol(FpSection)?;
-                                }
-                                Err(_) => {
-                                    // error: this actually wasn't another fp_section
-                                    // return the buffer back to the state before trying to parse the token stream as one
-                                    self.token_buffer.next_index = i_before;
-                                    break;
-                                }
-                            }
-                        }
+                        while let Ok(()) = self.try_sequence(&[Token(Comma), FpSection]) {}
                     }
                     self.try_symbol(Token(ParClose))?;
                     Ok(())
@@ -274,12 +264,14 @@ where
                     while let Ok(()) = self.try_symbol(Statement) {}
                     Ok(())
                 }
-                Statement => {
-                    self.try_symbols(&[Assignment, ProcedureCall, IfStatement, WhileStatement, ReturnStatement])
-                }
-                Type => {
-                    self.try_symbol(Token(Int))
-                }
+                Statement => self.try_symbols(&[
+                    Assignment,
+                    ProcedureCall,
+                    IfStatement,
+                    WhileStatement,
+                    ReturnStatement,
+                ]),
+                Type => self.try_symbol(Token(Int)),
                 Assignment => {
                     self.try_symbol(Token(dummy_ident.clone()))?;
                     self.try_symbol(Token(Equals))?;
@@ -325,26 +317,19 @@ where
                     self.try_symbol(Token(ParOpen))?;
                     if let Ok(()) = self.try_symbol(Expression) {
                         // find all following expressions
-                        loop {
-                            let i_before = self.token_buffer.next_index;
-                            match self.try_symbol(Token(Comma)) {
-                                Ok(()) => {
-                                    self.try_symbol(Expression)?;
-                                }
-                                Err(_) => {
-                                    // error: this actually wasn't another expression
-                                    // return the buffer back to the state before trying to parse the token stream as one
-                                    self.token_buffer.next_index = i_before;
-                                    break;
-                                }
-                            }
-                        }
+                        while let Ok(()) = self.try_sequence(&[Token(Comma), Expression]) {}
                     }
                     self.try_symbol(Token(ParClose))
                 }
                 Expression => {
                     self.try_symbol(SimpleExpression)?;
-                    if let Ok(()) = self.try_symbols(&[Token(EqualsEquals), Token(Smaller), Token(SmallerEqual), Token(Larger), Token(LargerEqual)]) {
+                    if let Ok(()) = self.try_symbols(&[
+                        Token(EqualsEquals),
+                        Token(Smaller),
+                        Token(SmallerEqual),
+                        Token(Larger),
+                        Token(LargerEqual),
+                    ]) {
                         self.try_symbol(SimpleExpression)?;
                     }
                     Ok(())
@@ -368,7 +353,11 @@ where
                         self.try_symbol(Expression)?;
                         self.try_symbol(Token(ParClose))
                     } else {
-                        self.try_symbols(&[InternProcedureCall, Token(dummy_ident.clone()), Token(dummy_number.clone())])
+                        self.try_symbols(&[
+                            InternProcedureCall,
+                            Token(dummy_ident.clone()),
+                            Token(dummy_number.clone()),
+                        ])
                     }
                 }
                 Token(expected_token) => {
@@ -376,7 +365,10 @@ where
                         if d(&next_token.token) == d(&expected_token) {
                             Ok(())
                         } else {
-                            Err(Box::new(WrongToken::new(next_token.clone(), vec![expected_token])))
+                            Err(Box::new(WrongToken::new(
+                                next_token.clone(),
+                                vec![expected_token],
+                            )))
                         }
                     } else {
                         Err(self.end_of_token_error())
@@ -392,7 +384,7 @@ where
                 //println!("Failed!");
                 self.token_buffer.next_index = index_before;
                 Err(Box::new(SymbolError::new_with_cause(symbol, e)))
-            },
+            }
         }
     }
 
@@ -414,9 +406,6 @@ where
     }
 
     fn end_of_token_error(&self) -> Box<UnexpectedEndOfTokens> {
-        Box::new(UnexpectedEndOfTokens::new(
-            self.line(),
-            self.pos()
-        ))
+        Box::new(UnexpectedEndOfTokens::new(self.line(), self.pos()))
     }
 }
