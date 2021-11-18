@@ -81,15 +81,13 @@ impl<T: Clone> Queue<T> {
 
     /// Advance the index pointing to the next item by 1, without reading in new items.
     pub fn advance(&mut self) { self.next_index += 1; }
-
-    pub fn len(&self) -> usize { self.queue.len() }
-
+/*
     /// Decrement the index pointing to the next item by n.
     pub fn go_back(&mut self, n: usize) {
         assert!(n <= self.next_index);
         self.next_index -= n;
     }
-
+*/
     /// Remove all items previous to the next item (if any) from the buffer.
     pub fn clear_previous(&mut self) {
         self.queue.drain(..self.next_index).for_each(drop);
@@ -100,13 +98,16 @@ impl<T: Clone> Queue<T> {
     ///
     /// Then return the item at next_index, if there is one.
     fn read<I: Iterator<Item = T>>(&mut self, iter: &mut I) -> Option<T> {
-        while self.queue.len() < self.next_index {
+        //println!("index: {}", self.next_index);
+        //println!("len before: {}", self.queue.len());
+        while self.queue.len() <= self.next_index {
             if let Some(item) = iter.next() {
                 self.queue.push_back(item);
             } else {
                 return None;
             }
         }
+        //println!("len after: {}", self.queue.len());
         self.get_next()
     }
 }
@@ -141,17 +142,7 @@ where
 
     pub fn check_syntax(&mut self) -> ParseResult {
         // the starting symbol is "class"
-        if let Some(token) = self.t_iter.next() {
-            if let Token::Class = token.token {
-                self.try_symbol(Symbol::Class)?;
-            } else {
-                return Err(Box::new(WrongToken::new(
-                    token,
-                    vec![d(&Token::Class)],
-                )));
-            }
-        }
-        return Err(self.end_of_token_error());
+        self.try_symbol(Symbol::Class)
     }
 
     /// Try interpreting the token stream as one of the symbols. Try one after another.
@@ -162,20 +153,20 @@ where
                 return Ok(());
             }
         }
-        Err(Box::new(SymbolsNotFound::new(expected_symbols.iter().map(|symbol| d(symbol)).collect())))
+        Err(Box::new(SymbolsNotFound::new(expected_symbols.iter().map(|sym| (*sym).clone()).collect())))
     }
 
     /// Try interpreting the token stream as the given symbol.
     pub fn try_symbol(&mut self, symbol: Symbol) -> ParseResult {
         use Symbol::*;
-        let DUMMY_IDENT = scanner::Token::Ident("".to_string());
-        let DUMMY_NUMBER = scanner::Token::Number(0);
+        let dummy_ident = scanner::Token::Ident("".to_string());
+        let dummy_number = scanner::Token::Number(0);
         let index_before = self.token_buffer.next_index;
         let mut try_check = || -> ParseResult {
             match symbol.clone() {
                 Class => {
                     self.try_symbol(Token(scanner::Token::Class))?;
-                    self.try_symbol(Token(DUMMY_IDENT.clone()))?;
+                    self.try_symbol(Token(dummy_ident.clone()))?;
                     self.try_symbol(Classbody)
                 }
                 Classbody => {
@@ -187,29 +178,30 @@ where
                     // start with the final declarations
                     loop {
                         let i_before = self.token_buffer.next_index;
+                        let mut ok = true;
                         match self.try_symbol(Token(Final)) {
                             Ok(()) => {
-                                self.try_symbol(Type)?;
-                                self.try_symbol(Token(DUMMY_IDENT.clone()))?;
-                                self.try_symbol(Token(Equals))?;
-                                self.try_symbol(Expression)?;
-                                self.try_symbol(Token(Semicolon))?;
+                                if let Err(_) = self.try_symbol(Type) {ok = false;}
+                                if let Err(_) = self.try_symbol(Token(dummy_ident.clone())) {ok = false;}
+                                if let Err(_) = self.try_symbol(Token(Equals)) {ok = false;}
+                                if let Err(_) = self.try_symbol(Expression) {ok = false;}
+                                if let Err(_) = self.try_symbol(Token(Semicolon)) {ok = false;}
                             }
-                            Err(_) => {
-                                // error: this actually wasn't a final declaration
-                                // return the buffer back to the state before trying to parse the token stream as one
-                                self.token_buffer.next_index = i_before;
-                                break;
-                            }
+                            Err(_) => { ok = false; }
+                        }
+                        if !ok {
+                            // error: this actually wasn't a final declaration
+                            // return the buffer back to the state before trying to parse the token stream as one
+                            self.token_buffer.next_index = i_before;
+                            break;
                         }
                     }
                     // then get the non-final declarations
                     loop {
                         let i_before = self.token_buffer.next_index;
-                        match self.try_symbol(Token(Final)) {
+                        match self.try_symbol(Type) {
                             Ok(()) => {
-                                self.try_symbol(Type)?;
-                                self.try_symbol(Token(DUMMY_IDENT.clone()))?;
+                                self.try_symbol(Token(dummy_ident.clone()))?;
                                 self.try_symbol(Token(Semicolon))?;
                             }
                             Err(_) => {
@@ -231,7 +223,7 @@ where
                 MethodHead => {
                     self.try_symbol(Token(Public))?;
                     self.try_symbol(MethodType)?;
-                    self.try_symbol(Token(DUMMY_IDENT.clone()))?;
+                    self.try_symbol(Token(dummy_ident.clone()))?;
                     self.try_symbol(FormalParameters)
                 }
                 MethodType => {
@@ -257,11 +249,12 @@ where
                             }
                         }
                     }
+                    self.try_symbol(Token(ParClose))?;
                     Ok(())
                 }
                 FpSection => {
                     self.try_symbol(Type)?;
-                    self.try_symbol(Token(DUMMY_IDENT.clone()))
+                    self.try_symbol(Token(dummy_ident.clone()))
                 }
                 MethodBody => {
                     self.try_symbol(Token(CurlyOpen))?;
@@ -273,7 +266,7 @@ where
                 }
                 LocalDeclaration => {
                     self.try_symbol(Type)?;
-                    self.try_symbol(Token(DUMMY_IDENT.clone()))?;
+                    self.try_symbol(Token(dummy_ident.clone()))?;
                     self.try_symbol(Token(Semicolon))
                 }
                 StatementSequence => {
@@ -288,7 +281,7 @@ where
                     self.try_symbol(Token(Int))
                 }
                 Assignment => {
-                    self.try_symbol(Token(DUMMY_IDENT.clone()))?;
+                    self.try_symbol(Token(dummy_ident.clone()))?;
                     self.try_symbol(Token(Equals))?;
                     self.try_symbol(Expression)?;
                     self.try_symbol(Token(Semicolon))
@@ -298,7 +291,7 @@ where
                     self.try_symbol(Token(Semicolon))
                 }
                 InternProcedureCall => {
-                    self.try_symbol(Token(DUMMY_IDENT.clone()))?;
+                    self.try_symbol(Token(dummy_ident.clone()))?;
                     self.try_symbol(ActualParameters)
                 }
                 IfStatement => {
@@ -375,7 +368,7 @@ where
                         self.try_symbol(Expression)?;
                         self.try_symbol(Token(ParClose))
                     } else {
-                        self.try_symbols(&[InternProcedureCall, Token(DUMMY_IDENT.clone()), Token(DUMMY_NUMBER.clone())])
+                        self.try_symbols(&[InternProcedureCall, Token(dummy_ident.clone()), Token(dummy_number.clone())])
                     }
                 }
                 Token(expected_token) => {
@@ -383,7 +376,7 @@ where
                         if d(&next_token.token) == d(&expected_token) {
                             Ok(())
                         } else {
-                            Err(Box::new(WrongToken::new(next_token.clone(), vec![d(&expected_token)])))
+                            Err(Box::new(WrongToken::new(next_token.clone(), vec![expected_token])))
                         }
                     } else {
                         Err(self.end_of_token_error())
@@ -396,6 +389,7 @@ where
             Ok(()) => Ok(()),
             Err(e) => {
                 // reset the index so someone can try again with another symbol
+                //println!("Failed!");
                 self.token_buffer.next_index = index_before;
                 Err(Box::new(SymbolError::new_with_cause(symbol, e)))
             },
@@ -404,6 +398,8 @@ where
 
     fn next_token(&mut self) -> Result<TWithPos, Box<dyn ParseError>> {
         let next = self.peek_next_token()?;
+        self.line = next.line;
+        self.pos = next.pos;
         // advance the index
         self.token_buffer.advance();
         Ok(next)

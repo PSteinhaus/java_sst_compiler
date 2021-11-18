@@ -3,7 +3,6 @@ use crate::parser::Symbol;
 use crate::scanner::{TWithPos, Token};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
-use std::mem::Discriminant;
 
 pub trait ParseError: Error {}
 
@@ -68,11 +67,11 @@ impl Display for UnexpectedEndOfTokens {
 #[derive(Debug)]
 pub struct WrongToken {
     token: TWithPos,
-    expected_variants: Vec<Discriminant<Token>>,
+    expected_variants: Vec<Token>,
 }
 
 impl WrongToken {
-    pub fn new(token: TWithPos, expected_variants: Vec<Discriminant<Token>>) -> Self {
+    pub fn new(token: TWithPos, expected_variants: Vec<Token>) -> Self {
         Self {
             token,
             expected_variants,
@@ -92,7 +91,7 @@ impl Display for WrongToken {
             self.expected_variants,
             self.token.line,
             self.token.pos,
-            Box::new(std::mem::discriminant(&self.token.token))
+            self.token.token
         )
     }
 }
@@ -100,11 +99,11 @@ impl Display for WrongToken {
 
 #[derive(Debug)]
 pub struct SymbolsNotFound {
-    expected_variants: Vec<Discriminant<Symbol>>,
+    expected_variants: Vec<Symbol>,
 }
 
 impl SymbolsNotFound {
-    pub fn new(expected_variants: Vec<Discriminant<Symbol>>) -> Self {
+    pub fn new(expected_variants: Vec<Symbol>) -> Self {
         Self {
             expected_variants,
         }
