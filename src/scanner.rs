@@ -1,9 +1,6 @@
 //! utilities and structs for scanning texts, translating them into symbols for the parser
 
-use crate::input::{CPos, Input, LNum};
-use crate::SSTint;
-
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Token {
     Class,
     Public,
@@ -39,19 +36,28 @@ pub enum Token {
     Other,
 }
 
+#[derive(Debug, Clone)]
+pub struct TWithPos {
+    pub token: Token,
+    pub line: LNum,
+    pub pos: CPos,
+}
+
 pub struct Scanner {
     input: Input,
 }
 
+use crate::input::{CPos, Input, LNum};
 use crate::scanner::Token::*;
+use crate::SSTint;
 
 impl Scanner {
     pub fn new(input: Input) -> Self {
         Self { input }
     }
 
-    /// Returns the next symbol, if there is one, or `None`, if there isn't.
-    pub fn read_sym(&mut self) -> Option<(Token, LNum, CPos)> {
+    /// Returns the next token, if there is one, or `None`, if there isn't.
+    pub fn read_token(&mut self) -> Option<TWithPos> {
         while let Some(next_char) = self.input.next() {
             // check if you hit whitespace and if true just continue with the next character
             if next_char.ch.is_whitespace() {
@@ -81,7 +87,7 @@ impl Scanner {
                                             self.input.next();
                                             // call read_sym recursively to get the next symbol
                                             // (as this was just a comment)
-                                            return self.read_sym();
+                                            return self.read_token();
                                         } else {
                                             continue;
                                         }
@@ -170,8 +176,20 @@ impl Scanner {
                 }
                 _ => Other,
             };
-            return Some((token, next_char.line, next_char.pos));
+            return Some(TWithPos {
+                token,
+                line: next_char.line,
+                pos: next_char.pos,
+            });
         }
         None
+    }
+}
+
+impl Iterator for Scanner {
+    type Item = TWithPos;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.read_token()
     }
 }

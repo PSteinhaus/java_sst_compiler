@@ -1,4 +1,5 @@
 mod input;
+mod parser;
 mod scanner;
 
 #[macro_use]
@@ -13,7 +14,7 @@ use std::path;
 fn main() {
     let input = Input::new(path::PathBuf::from("scantest.txt")).unwrap();
     let mut scanner = Scanner::new(input);
-    while let Some(token) = scanner.read_sym() {
-        println!("{:?}", token);
+    while let Some(sym) = scanner.read_token() {
+        println!("{:?}", sym);
     }
 }
