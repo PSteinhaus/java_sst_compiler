@@ -6,6 +6,7 @@ use std::fmt::{Debug, Display, Formatter};
 
 pub trait ParseError: Error {}
 
+pub type CheckResult = Result<(), Box<dyn ParseError>>;
 pub type ParseResult = Result<(), Box<dyn ParseError>>;
 
 #[derive(Debug)]
@@ -113,6 +114,31 @@ impl Display for SymbolsNotFound {
             f,
             "couldn't find any of the expected symbol variants {:?}",
             self.expected_variants
+        )
+    }
+}
+
+
+#[derive(Debug)]
+pub struct DoubleDeclaration {
+    name: String,
+}
+
+impl DoubleDeclaration {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl Error for DoubleDeclaration {}
+impl ParseError for DoubleDeclaration {}
+
+impl Display for DoubleDeclaration {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "double declaration of {:?}",
+            self.name
         )
     }
 }

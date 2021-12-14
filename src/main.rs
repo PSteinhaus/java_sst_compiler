@@ -1,3 +1,4 @@
+mod helper;
 mod input;
 mod parser;
 mod scanner;
@@ -15,8 +16,8 @@ use std::path;
 fn main() {
     let input = Input::new(path::PathBuf::from("scantest.txt")).unwrap();
     let scanner = Scanner::new(input);
-    let mut parser = Parser::new(scanner);
-    parser.check_syntax().unwrap();
+    let parser = Parser::new(scanner);
+    parser.parse().unwrap();
     /*
     while let Some(sym) = scanner.read_token() {
         println!("{:?}", sym);

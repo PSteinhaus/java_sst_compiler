@@ -2,7 +2,7 @@ class Test {
     public void testfunktion(int n) {
         int b;
         int c;
-        c = 10;
+        c = 5;
         b = 2+c/4;
         return b;  /**
                           dieser Kommentar sollte hoffentlich nicht auftauchen
