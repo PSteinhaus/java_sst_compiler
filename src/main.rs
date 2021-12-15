@@ -14,7 +14,7 @@ use crate::scanner::Scanner;
 use std::path;
 
 fn main() {
-    let input = Input::new(path::PathBuf::from("scantest.txt")).unwrap();
+    let input = Input::new(path::PathBuf::from("parsetest.txt")).unwrap();
     let scanner = Scanner::new(input);
     let parser = Parser::new(scanner);
     parser.parse().unwrap();

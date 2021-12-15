@@ -3,25 +3,24 @@ use crate::parser::Symbol;
 use crate::scanner::{TWithPos, Token};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
+use dyn_clone::{clone_trait_object, DynClone};
 
-pub trait ParseError: Error {}
+pub trait ParseError: Error + DynClone {}
+
+clone_trait_object!(ParseError);    // creates a DynClone implementation that just creates a new dynamic object based on a clone of the specific ParseError object
 
 pub type CheckResult = Result<(), Box<dyn ParseError>>;
 pub type ParseResult = Result<(), Box<dyn ParseError>>;
+/// contains the symbol enum that was actually parsed
+pub type ParseMultiResult = Result<Symbol, Box<dyn ParseError>>;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SymbolError {
     symbol: Symbol,
     cause: Option<Box<dyn ParseError>>,
 }
 
 impl SymbolError {
-    pub fn new(symbol: Symbol) -> Self {
-        Self {
-            symbol,
-            cause: None,
-        }
-    }
     pub fn new_with_cause(symbol: Symbol, cause: Box<dyn ParseError>) -> Self {
         Self {
             symbol,
@@ -40,7 +39,7 @@ impl Error for SymbolError {}
 
 impl ParseError for SymbolError {}
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct UnexpectedEndOfTokens {
     line: LNum,
     pos: CPos,
@@ -65,7 +64,7 @@ impl Display for UnexpectedEndOfTokens {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WrongToken {
     token: TWithPos,
     expected_variants: Vec<Token>,
@@ -94,7 +93,7 @@ impl Display for WrongToken {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SymbolsNotFound {
     expected_variants: Vec<Symbol>,
 }
@@ -119,7 +118,7 @@ impl Display for SymbolsNotFound {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct DoubleDeclaration {
     name: String,
 }
@@ -138,6 +137,30 @@ impl Display for DoubleDeclaration {
         write!(
             f,
             "double declaration of {:?}",
+            self.name
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UndefinedSymbol {
+    name: String,
+}
+
+impl UndefinedSymbol {
+    pub fn new(name: String) -> Self {
+        Self { name }
+    }
+}
+
+impl Error for UndefinedSymbol {}
+impl ParseError for UndefinedSymbol {}
+
+impl Display for UndefinedSymbol {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:?} has not been defined yet",
             self.name
         )
     }

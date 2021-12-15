@@ -6,3 +6,4 @@ authors = ["Philipp Steinhaus"]
 
 [dependencies]
 ouroboros = "0.13"
+dyn-clone = "1.0.4"

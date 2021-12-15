@@ -1,4 +1,5 @@
 class Test {
+
 	final int var1 = 0;
 	final int var2 = 2;
 	final int var3 = 127;
@@ -8,6 +9,10 @@ class Test {
 	int dyn1;
 	int dyn2;
 	int dyn3;
+
+    public int meth2(int m, int n) {
+        return m * n + (m/n);
+    }
 
 	public void meth1() {
 		int m1;
@@ -20,12 +25,11 @@ class Test {
 
 		while(m1 < m2) {
 			m1 = m1 + 1;
-
-			/*
 			if (m1 == 15) {
 				m3 = m3 + 1;
-			} // missing else
-            */
+			} else {
+				m3 = m3 - 1;
+			}
 
 			if (m3 >= 5) {
 				return;
@@ -39,9 +43,5 @@ class Test {
 		m2 = meth2(meth2(m1,m3), m2);
 
 		return;
-	}
-
-	public int meth2(int m, int n) {
-		return m * n + (m/n);
 	}
 }
