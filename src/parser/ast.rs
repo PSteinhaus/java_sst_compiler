@@ -1,7 +1,9 @@
 use std::borrow::BorrowMut;
 use std::cell::{RefCell};
+use std::ops::Deref;
 use std::rc::Rc;
-use crate::parser::sym_table::{SymEntry, Type};
+use crate::parser::error::{ParseResult, UndefinedSymbol};
+use crate::parser::sym_table::{EntryType, SymEntry, Type};
 
 // TODO: create function that returns syntax tree in DOT format
 
@@ -109,6 +111,29 @@ impl Node {
     }
     pub fn set_return_val(&mut self, val: Option<Type>) {
         self.return_val = val;
+    }
+
+    pub fn resolve_table_links(&mut self) -> ParseResult {
+        if let Some(node) = &mut self.left { node.resolve_table_links()?; }
+
+        if let Some(entry) = &self.obj {
+            let sym_entry = entry.deref().borrow();
+            if let EntryType::Unresolved(weak_table) = sym_entry.entry_type() {
+                let table = weak_table.upgrade().expect("sym table was lost for some reason");
+                let unresolved_name = sym_entry.name();
+                let desired_entry_option = table.deref().borrow().get_entry(unresolved_name);
+                if let Some(desired_entry) = desired_entry_option {
+                    drop(sym_entry);
+                    self.obj = Some(desired_entry);
+                } else {
+                    return Err(Box::new(UndefinedSymbol::new(unresolved_name.to_string())));
+                }
+            }
+        }
+
+        if let Some(node) = &mut self.right { node.resolve_table_links()?; }
+        if let Some(node) = &mut self.link { node.resolve_table_links()?; }
+        Ok(())
     }
 }
 

@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::mem::Discriminant;
 use std::rc::{Rc, Weak};
 use crate::parser::error::{DoubleDeclaration, ParseError};
 use crate::SSTint;
@@ -82,6 +83,11 @@ pub enum EntryType {
     Const(Type),
     Proc(Rc<RefCell<SymTable>>, Vec<(Type, String)>, ResultType),
     Block(Rc<RefCell<SymTable>>),
+    /// This variant is meant as a placeholder for use in AST nodes that weren't able to find a
+    /// certain function name which might have only been defined later.
+    ///
+    /// It contains the symtable in which the function would need to have been defined
+    Unresolved(Weak<RefCell<SymTable>>),
 }
 
 #[derive(Debug, Copy, Clone)]

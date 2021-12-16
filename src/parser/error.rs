@@ -3,7 +3,9 @@ use crate::parser::Symbol;
 use crate::scanner::{TWithPos, Token};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
+use std::mem::Discriminant;
 use dyn_clone::{clone_trait_object, DynClone};
+use crate::parser::sym_table::EntryType;
 
 pub trait ParseError: Error + DynClone {}
 
@@ -162,6 +164,39 @@ impl Display for UndefinedSymbol {
             f,
             "{:?} has not been defined yet",
             self.name
+        )
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct TypeMismatch {
+    symbol_name: String,
+    expected: String,
+    found:  Discriminant<EntryType>,
+}
+
+impl TypeMismatch {
+    pub fn new(symbol_name: String, expected: String, found: Discriminant<EntryType>) -> Self {
+        Self {
+            symbol_name,
+            expected,
+            found,
+        }
+    }
+}
+
+impl Error for TypeMismatch {}
+impl ParseError for TypeMismatch {}
+
+impl Display for TypeMismatch {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} has type: {:?}\nexpected: {}",
+            self.symbol_name,
+            self.found,
+            self.expected
         )
     }
 }

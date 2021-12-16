@@ -183,8 +183,11 @@ where
             // (which is hopefully the error that actually caused the final failure)
             eprintln!("Parsing failed, probable source at line {}, pos {}, {}", self.best_line, self.best_pos, self.best_error.unwrap().deref().to_string());
             return Err(e);
+        } else {
+            // try to find all missing symbol table links in the ast
+            self.ast.resolve_table_links()?;
+            Ok(())
         }
-        Ok(())
     }
 
     /// Try interpreting the token stream as the given symbol.
@@ -396,7 +399,6 @@ where
 
                         add_node_with_hint(current_node, assign_node, node_additions, node_hint.expect("assignments need node hints"));
                     } else {
-                        // TODO: maybe don't throw an error when a var isn't defined (yet) because it might get defined later...
                         return Err(Box::new(UndefinedSymbol::new(var_ident)));
                     }
                     Ok(())
@@ -408,16 +410,21 @@ where
                 InternProcedureCall => {
                     let procedure_name = self.parse_identifier()?;
                     let en = self.sym_table_current.deref().borrow().get_entry(procedure_name.as_str());
-                    if let Some(entry) = en {
-                        let mut call_node = Node::new(SyntaxElement::Call, None, Some(entry));
-                        // set the actual parameters as the left child of the call node
-                        self.parse_symbol_ext(ActualParameters, &mut call_node, None, Some(NodeHint::Left))?;
-
-                        add_node_with_hint(current_node, call_node, node_additions, node_hint.expect("proc calls need a hint"));
+                    let ast_entry = if let Some(entry) = en {
+                        entry
                     } else {
-                        // TODO: maybe don't throw an error when a procedure isn't defined (yet) because it might get defined later...
-                        return Err(Box::new(UndefinedSymbol::new(procedure_name)));
-                    }
+                        // don't throw an error when a procedure isn't defined (yet) because it might get defined later...
+                        // instead add a placeholder allowing to try and resolve the missing link later
+                        let placeholder = EntryType::Unresolved(Rc::downgrade(&self.sym_table_current));
+                        Rc::new(RefCell::new(SymEntry::new(procedure_name, placeholder)))
+                        //return Err(Box::new(UndefinedSymbol::new(procedure_name)));
+                    };
+                    let mut call_node = Node::new(SyntaxElement::Call, None, Some(ast_entry));
+                    // set the actual parameters as the left child of the call node
+                    self.parse_symbol_ext(ActualParameters, &mut call_node, None, Some(NodeHint::Left))?;
+
+                    add_node_with_hint(current_node, call_node, node_additions, node_hint.expect("proc calls need a hint"));
+
                     Ok(())
                 }
                 IfStatement => {
@@ -627,9 +634,19 @@ where
                                         //println!("symbol table {:?}", self.sym_table_current.deref());
                                         let call_entry = self.sym_table_current.deref().borrow().get_entry(s.as_str());
                                         if let Some(entry) = call_entry {
-                                            current_node.set_obj(Some(entry));
+                                            let sym_entry = entry.deref().borrow();
+                                            let entry_type = sym_entry.entry_type();
+                                            if let EntryType::Proc(..) = entry_type {  // check if the entry is actually a procedure
+                                                drop(sym_entry);
+                                                current_node.set_obj(Some(entry));
+                                            } else {
+                                                return Err(Box::new(TypeMismatch::new(s, "EntryType::Proc".to_string() ,d(entry_type))));
+                                            };
                                         } else {
-                                            return Err(Box::new(UndefinedSymbol::new(s)));
+                                            // don't throw an error and instead just assume that the method will get defined later
+                                            let unresolved_entry = EntryType::Unresolved(Rc::downgrade(&self.sym_table_current));
+                                            current_node.set_obj(Some(Rc::new(RefCell::new(SymEntry::new(s, unresolved_entry)))))
+                                            //return Err(Box::new(UndefinedSymbol::new(s)));    // old behavior: throw an error
                                         }
                                     }
                                 }
@@ -641,8 +658,18 @@ where
                                         let var_entry = self.sym_table_current.deref().borrow().get_entry(s.as_str());
                                         if let Some(entry) = var_entry {
                                             // check if it's a constant
-                                            if let EntryType::Const(value) = entry.deref().borrow().entry_type() {
-                                                current_node.set_return_val(Some(*value));  // and set the return value to the const value if true
+                                            {
+                                                let sym_entry = entry.deref().borrow();
+                                                let entry_type = sym_entry.entry_type();
+                                                match entry_type {
+                                                    EntryType::Const(value) => {
+                                                        current_node.set_return_val(Some(*value));  // and set the return value to the const value if true
+                                                    },
+                                                    EntryType::Var(_) => {},
+                                                    other_type => {
+                                                        return Err(Box::new(TypeMismatch::new(s, "EntryType::Val or EntryType::Const".to_string(), d(other_type))));
+                                                    }
+                                                }
                                             }
                                             current_node.set_obj(Some(entry));
                                         } else {

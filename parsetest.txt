@@ -10,10 +10,6 @@ class Test {
 	int dyn2;
 	int dyn3;
 
-    public int meth2(int m, int n) {
-        return m * n + (m/n);
-    }
-
 	public void meth1() {
 		int m1;
 		int m2;
@@ -44,4 +40,8 @@ class Test {
 
 		return;
 	}
+
+	public int meth2(int m, int n) {
+            return m * n + (m/n);
+        }
 }
