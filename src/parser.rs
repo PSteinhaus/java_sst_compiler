@@ -173,7 +173,7 @@ where
     }
 
     /// Consume the parser to parse the given Input.
-    pub fn parse(mut self) -> ParseResult {
+    pub fn parse(mut self) -> Result<(Rc<RefCell<SymTable>>, Node), Box<dyn ParseError>> {
         // the starting symbol is "class"
         // create a dummy node to put into parse_symbol
         let mut dummy = Node::new(SyntaxElement::Init, None, None);
@@ -186,7 +186,7 @@ where
         } else {
             // try to find all missing symbol table links in the ast
             self.ast.resolve_table_links()?;
-            Ok(())
+            Ok((self.sym_table, self.ast))
         }
     }
 

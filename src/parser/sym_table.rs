@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::mem::Discriminant;
 use std::rc::{Rc, Weak};
 use crate::parser::error::{DoubleDeclaration, ParseError};
 use crate::SSTint;

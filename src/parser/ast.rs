@@ -1,6 +1,6 @@
-use std::borrow::BorrowMut;
+use std::borrow::{Borrow, BorrowMut};
 use std::cell::{RefCell};
-use std::ops::Deref;
+use std::ops::{Deref};
 use std::rc::Rc;
 use crate::parser::error::{ParseResult, UndefinedSymbol};
 use crate::parser::sym_table::{EntryType, SymEntry, Type};
@@ -28,6 +28,10 @@ impl Node {
             return_val,
             obj,
         }
+    }
+
+    pub fn has_children(&self) -> bool {
+        self.left.is_some() || self.right.is_some()
     }
 
     pub fn set_left(&mut self, node: Option<Node>) {
@@ -102,6 +106,25 @@ impl Node {
         None
     }
 
+    pub fn borrow_left(&self) -> Option<&Node> {
+        if let Some(boxed_node) = &self.left {
+            return Some(boxed_node.borrow());
+        }
+        None
+    }
+    pub fn borrow_right(&self) -> Option<&Node> {
+        if let Some(boxed_node) = &self.right {
+            return Some(boxed_node.borrow());
+        }
+        None
+    }
+    pub fn borrow_link(&self) -> Option<&Node> {
+        if let Some(boxed_node) = &self.link {
+            return Some(boxed_node.borrow());
+        }
+        None
+    }
+
     pub fn node_type(&self) -> SyntaxElement {
         self.node_type
     }
@@ -135,6 +158,61 @@ impl Node {
         if let Some(node) = &mut self.link { node.resolve_table_links()?; }
         Ok(())
     }
+
+    pub fn dot_representation(&self) -> String {
+        let builder = DotBuilder::new();
+        builder.start_with(&self)
+    }
+
+    fn dot_label(&self) -> String {
+        if let Some(Type::Int(i)) = &self.return_val {
+            return (*i).to_string();
+        }
+        let name = if let Some(entry) = &self.obj {
+            entry.deref().borrow().name().to_string()
+        } else {
+            "".to_string()
+        };
+
+        match &self.node_type {
+            SyntaxElement::Class => {
+                format!("class {}", name)
+            }
+            SyntaxElement::Init => {
+                format!("init")
+            }
+            SyntaxElement::Enter => {
+                format!("enter {}()", name)
+            }
+            SyntaxElement::Call => {
+                format!("call {}()", name)
+            }
+            SyntaxElement::Assign => {
+                format!("assign")
+            }
+            SyntaxElement::Var => {
+                format!("var {}", name)
+            }
+            SyntaxElement::Const => {
+                panic!("consts should be literals and should be handled already by checking `return_val`");
+            }
+            SyntaxElement::Binop(b) => {
+                format!("binop {:?}", *b)
+            }
+            SyntaxElement::IfElse => {
+                format!("ifElse")
+            }
+            SyntaxElement::If => {
+                format!("if")
+            }
+            SyntaxElement::While => {
+                format!("while")
+            }
+            SyntaxElement::Return => {
+                format!("return")
+            }
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -166,4 +244,95 @@ pub enum Binop {
     SmallerEqual,
     Larger,
     LargerEqual,
+}
+
+/// A helper struct to construct a DOT representation of the AST
+pub struct DotBuilder {
+    content: String,
+    node_num: usize,
+}
+
+impl DotBuilder {
+    pub fn new() -> Self {
+        Self {
+            content: "".to_string(),
+            node_num: 0
+        }
+    }
+
+    fn add_next_node_entry(&mut self, node: &Node) {
+        let s = format!("{} [label=\"{}\"];\n", self.node_num, node.dot_label());
+        self.node_num += 1;
+        self.content.push_str(s.as_str());
+    }
+
+    fn add_empty_node_entry(&mut self) {
+        let s = format!("{} [shape=point];\n", self.node_num);
+        self.node_num += 1;
+        self.content.push_str(s.as_str());
+    }
+
+    fn restrict_latest(&mut self) {
+        let s = format!("{{ rank = same; {}; {}; }}\n", self.node_num - 2, self.node_num - 1);
+        self.content.push_str(s.as_str());
+    }
+
+    fn connect(&mut self, id_start: usize, id_end: usize) {
+        let s = format!("{} -> {};\n", id_start, id_end);
+        self.content.push_str(s.as_str());
+    }
+
+    pub fn start_with(mut self, node: &Node) -> String {
+        // first start the graph
+        self.content.push_str("digraph {\n");
+        // then add an entry for this node
+        self.add_next_node_entry(node);
+        // then add the rest
+        self.add_node(node);
+        // and finally end the graph
+        self.content.push_str("}\n");
+
+        self.content
+    }
+
+    fn latest_id(&self) -> usize { self.node_num - 1 }
+
+    fn add_node(&mut self, node: &Node) {
+        let own_id = self.latest_id();
+        // add an entry for the link if there is one
+        if let Some(link) = node.borrow_link() {
+            self.add_next_node_entry(link);
+            // now add an edge between them
+            self.connect(own_id, self.latest_id());
+            // and since there is one also add a rank restriction binding them to the same rank
+            self.restrict_latest();
+            // and now recursively add the linked node tree
+            self.add_node(link);
+        }
+        // before adding the children check whether there are any at all (to avoid creating useless empty nodes)
+        if node.has_children() {
+            // now add left first
+            if let Some(left) = node.borrow_left() {
+                self.add_next_node_entry(left);
+                // now add an edge between them
+                self.connect(own_id, self.latest_id());
+                // and now recursively add the left node tree
+                self.add_node(left);
+            } else {
+                self.add_empty_node_entry();
+                self.connect(own_id, self.latest_id());
+            }
+            // then right
+            if let Some(right) = node.borrow_right() {
+                self.add_next_node_entry(right);
+                // now add an edge between them
+                self.connect(own_id, self.latest_id());
+                // and now recursively add the right node tree
+                self.add_node(right);
+            } else {
+                self.add_empty_node_entry();
+                self.connect(own_id, self.latest_id());
+            }
+        }
+    }
 }
