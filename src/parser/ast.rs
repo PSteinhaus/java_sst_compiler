@@ -297,6 +297,15 @@ impl DotBuilder {
 
     fn latest_id(&self) -> usize { self.node_num - 1 }
 
+    fn enforce_ordering(&mut self, left: usize, right: usize) {
+        self.content.push_str(&*format!("{{\
+rank = same;\
+edge[style=invis];\
+{} -> {};\
+rankdir = LR;\
+}}\n", left, right));
+    }
+
     fn add_node(&mut self, node: &Node) {
         let own_id = self.latest_id();
         // add an entry for the link if there is one
@@ -312,27 +321,35 @@ impl DotBuilder {
         // before adding the children check whether there are any at all (to avoid creating useless empty nodes)
         if node.has_children() {
             // now add left first
+            let left_id;
             if let Some(left) = node.borrow_left() {
                 self.add_next_node_entry(left);
                 // now add an edge between them
-                self.connect(own_id, self.latest_id());
+                left_id = self.latest_id();
+                self.connect(own_id, left_id);
                 // and now recursively add the left node tree
                 self.add_node(left);
             } else {
                 self.add_empty_node_entry();
-                self.connect(own_id, self.latest_id());
+                left_id = self.latest_id();
+                self.connect(own_id, left_id);
             }
+            let right_id;
             // then right
             if let Some(right) = node.borrow_right() {
                 self.add_next_node_entry(right);
                 // now add an edge between them
-                self.connect(own_id, self.latest_id());
+                right_id = self.latest_id();
+                self.connect(own_id, right_id);
                 // and now recursively add the right node tree
                 self.add_node(right);
             } else {
                 self.add_empty_node_entry();
-                self.connect(own_id, self.latest_id());
+                right_id = self.latest_id();
+                self.connect(own_id, right_id);
             }
+            // finally enforce a left to right ordering through invisible edges
+            self.enforce_ordering(left_id, right_id);
         }
     }
 }

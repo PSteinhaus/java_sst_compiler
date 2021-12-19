@@ -361,12 +361,15 @@ where
                 }
                 StatementSequence => {
                     self.parse_symbol_ext(Statement, current_node, None, node_hint)?;
-                    let stat_node = match node_hint.expect("stat sequences need node hints") {
+                    let mut stat_node = match node_hint.expect("stat sequences need node hints") {
                         NodeHint::Left => current_node.borrow_left_mut().unwrap(),
                         NodeHint::Right => current_node.borrow_right_mut().unwrap(),
                         NodeHint::Link => current_node.borrow_link_mut().unwrap(),
                     };
-                    while let Ok(()) = self.parse_symbol_ext(Statement, stat_node, None, Some(NodeHint::Link)) {}
+                    while let Ok(()) = self.parse_symbol_ext(Statement, stat_node, None, Some(NodeHint::Link)) {
+                        // set the new stat node to be the current one, so that the next statement is added as a link starting from that one
+                        stat_node = stat_node.borrow_link_mut().unwrap();
+                    }
                     Ok(())
                 }
                 Statement => {
