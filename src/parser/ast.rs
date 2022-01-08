@@ -2,6 +2,7 @@ use std::borrow::{Borrow, BorrowMut};
 use std::cell::{RefCell};
 use std::ops::{Deref};
 use std::rc::Rc;
+use crate::input::{CPos, LNum};
 use crate::parser::error::{ParseResult, UndefinedSymbol};
 use crate::parser::sym_table::{EntryType, SymEntry, Type};
 
@@ -16,10 +17,13 @@ pub struct Node {
 
     return_val: Option<Type>,
     obj: Option<Rc<RefCell<SymEntry>>>,
+
+    line: LNum,
+    pos: CPos,
 }
 
 impl Node {
-    pub fn new(node_type: SyntaxElement, return_val: Option<Type>, obj: Option<Rc<RefCell<SymEntry>>>) -> Self {
+    pub fn new(node_type: SyntaxElement, return_val: Option<Type>, obj: Option<Rc<RefCell<SymEntry>>>, line: LNum, pos: CPos) -> Self {
         Self {
             left: None,
             right: None,
@@ -27,8 +31,13 @@ impl Node {
             node_type,
             return_val,
             obj,
+            line,
+            pos,
         }
     }
+
+    pub fn line(&self) -> LNum { self.line }
+    pub fn pos(&self) -> CPos { self.pos }
 
     pub fn has_children(&self) -> bool {
         self.left.is_some() || self.right.is_some()
@@ -157,6 +166,22 @@ impl Node {
         if let Some(node) = &mut self.right { node.resolve_table_links()?; }
         if let Some(node) = &mut self.link { node.resolve_table_links()?; }
         Ok(())
+    }
+
+    pub fn value_type(&self) -> Option<Type> {
+        if let SyntaxElement::Const = self.node_type {
+            return self.return_val;
+        }
+        if let Some(entry) = &self.obj {
+            let sym_entry = entry.deref().borrow();
+            return match sym_entry.entry_type() {
+                EntryType::Var(t) => Some(*t),
+                EntryType::Const(t) => Some(*t),
+                EntryType::Proc(_, _, returnType) => returnType.to_type(),
+                _ => None
+            };
+        }
+        None
     }
 
     pub fn dot_representation(&self) -> String {

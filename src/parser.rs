@@ -5,6 +5,7 @@
 mod error;
 mod sym_table;
 mod ast;
+pub mod semantic;
 
 use crate::input::{CPos, LNum};
 use crate::parser::error::*;
@@ -155,7 +156,7 @@ where
             token_buffer: Queue::<TWithPos>::new(),
             line: 0,
             pos: 0,
-            ast: Node::new(SyntaxElement::Class, None, None),   // just a placeholder
+            ast: Node::new(SyntaxElement::Class, None, None, 0, 0),   // just a placeholder
             sym_table: head_table.clone(),
             sym_table_current: head_table,
             best_line: 0,
@@ -176,7 +177,7 @@ where
     pub fn parse(mut self) -> Result<(Rc<RefCell<SymTable>>, Node), Box<dyn ParseError>> {
         // the starting symbol is "class"
         // create a dummy node to put into parse_symbol
-        let mut dummy = Node::new(SyntaxElement::Init, None, None);
+        let mut dummy = Node::new(SyntaxElement::Init, None, None, 0, 0);
         let res = self.parse_symbol(Symbol::Class, &mut dummy);
         if let Err(e) = res {
             // print the error that stopped the parser from progressing beyond the furthest it has ever read
@@ -227,7 +228,7 @@ where
                     self.add_sym_table_entry(class_entry.clone(), added_sym_names).expect("couldn't add class entry, probably due to duplicate class name (should never happen in JavaSST)");
 
                     // start the ast
-                    let mut first_node = Node::new(SyntaxElement::Class, None, Some(class_entry));
+                    let mut first_node = Node::new(SyntaxElement::Class, None, Some(class_entry), self.line, self.pos);
 
                     // set the class sym table to be the current one, because we now dive into the class
                     self.sym_table_current = class_sym_table;
@@ -242,7 +243,7 @@ where
                 }
                 Declarations => {
                     // start with the final declarations
-                    let mut init_node = Node::new(SyntaxElement::Init, None, None);
+                    let mut init_node = Node::new(SyntaxElement::Init, None, None, self.line, self.pos);
                     if let Ok(()) = self.parse_symbol(FinalDeclaration, &mut init_node) {
                         let mut assign_node = init_node.borrow_left_mut().unwrap();
                         while let Ok(()) = self.parse_symbol(FinalDeclaration, assign_node) {
@@ -262,13 +263,13 @@ where
                     Ok(())
                 }
                 FinalDeclaration => {
-                    let mut assign_node = Node::new(SyntaxElement::Assign, None, None);
+                    let mut assign_node = Node::new(SyntaxElement::Assign, None, None, self.line, self.pos);
 
                     self.try_symbol(TokenSym(Final))?;
                     let p_type = self.parse_type()?;
                     let name = self.parse_identifier()?;
                     let entry = Rc::new(RefCell::new(SymEntry::new(name, EntryType::Const(p_type))));
-                    let const_node = Node::new(SyntaxElement::Var, None, Some(entry.clone()));
+                    let const_node = Node::new(SyntaxElement::Var, None, Some(entry.clone()), self.line, self.pos);
                     assign_node.set_left(Some(const_node));
                     self.try_symbol(TokenSym(Equals))?;
 
@@ -304,7 +305,7 @@ where
                     let method_sym_table = method_entry.deref().borrow().sym_table().unwrap().clone();
                     self.add_sym_table_entry(method_entry.clone(), added_sym_names)?;
 
-                    let mut enter_node = Node::new(SyntaxElement::Enter, None, Some(method_entry));
+                    let mut enter_node = Node::new(SyntaxElement::Enter, None, Some(method_entry), self.line, self.pos);
 
                     // now we're diving into the method body so enter the method's sym table
                     self.sym_table_current = method_sym_table;
@@ -392,8 +393,8 @@ where
                     let var_ident = self.parse_identifier()?;
                     let en = self.sym_table_current.deref().borrow().get_entry(var_ident.as_str());
                     if let Some(entry) = en {
-                        let var_node = Node::new(SyntaxElement::Var, None, Some(entry));
-                        let mut assign_node = Node::new(SyntaxElement::Assign, None, None);
+                        let var_node = Node::new(SyntaxElement::Var, None, Some(entry), self.line, self.pos);
+                        let mut assign_node = Node::new(SyntaxElement::Assign, None, None, self.line, self.pos);
                         assign_node.set_left(Some(var_node));
 
                         self.try_symbol(TokenSym(Equals))?;
@@ -422,7 +423,7 @@ where
                         Rc::new(RefCell::new(SymEntry::new(procedure_name, placeholder)))
                         //return Err(Box::new(UndefinedSymbol::new(procedure_name)));
                     };
-                    let mut call_node = Node::new(SyntaxElement::Call, None, Some(ast_entry));
+                    let mut call_node = Node::new(SyntaxElement::Call, None, Some(ast_entry), self.line, self.pos);
                     // set the actual parameters as the left child of the call node
                     self.parse_symbol_ext(ActualParameters, &mut call_node, None, Some(NodeHint::Left))?;
 
@@ -434,8 +435,8 @@ where
                     self.try_symbol(TokenSym(If))?;
                     self.try_symbol(TokenSym(ParOpen))?;
 
-                    let mut if_else_node = Node::new(SyntaxElement::IfElse, None, None);
-                    let mut if_node = Node::new(SyntaxElement::If, None, None);
+                    let mut if_else_node = Node::new(SyntaxElement::IfElse, None, None, self.line, self.pos);
+                    let mut if_node = Node::new(SyntaxElement::If, None, None, self.line, self.pos);
 
                     self.parse_symbol_ext(Expression, &mut if_node, None, Some(NodeHint::Left))?;
 
@@ -474,7 +475,7 @@ where
                     self.try_symbol(TokenSym(While))?;
                     self.try_symbol(TokenSym(ParOpen))?;
 
-                    let mut while_node = Node::new(SyntaxElement::While, None, None);
+                    let mut while_node = Node::new(SyntaxElement::While, None, None, self.line, self.pos);
                     self.parse_symbol_ext(Expression, &mut while_node, None, Some(NodeHint::Left))?;
 
                     self.try_symbol(TokenSym(ParClose))?;
@@ -495,7 +496,7 @@ where
                 }
                 ReturnStatement => {
                     self.try_symbol(TokenSym(Return))?;
-                    let mut return_node = Node::new(SyntaxElement::Return, None, None);
+                    let mut return_node = Node::new(SyntaxElement::Return, None, None, self.line, self.pos);
                     if let Ok(()) = self.parse_symbol_ext(SimpleExpression, &mut return_node, None, Some(NodeHint::Right)) {}
                     self.try_symbol(TokenSym(Semicolon))?;
 
@@ -532,7 +533,7 @@ where
                             TokenSym(Larger) => { Binop::Larger },
                             TokenSym(LargerEqual) => { Binop::LargerEqual },
                             _ => panic!("parsed something different than a comparator for some reason")
-                        }), None, None);
+                        }), None, None, self.line, self.pos);
                         let s_expr_node = take_node_with_hint(current_node, hint);
                         binop_node.set_left_boxed(s_expr_node.unwrap()); // s_expr_node should exist as the first assumption should have lead to it being added
                         self.parse_symbol_ext(SimpleExpression, &mut binop_node, None, Some(NodeHint::Right))?;
@@ -551,7 +552,7 @@ where
                             TokenSym(Plus) => { Binop::Add },
                             TokenSym(Minus) => { Binop::Sub },
                             _ => panic!("parsed something different than a plus or minus for some reason")
-                        }), None, None);
+                        }), None, None, self.line, self.pos);
                         // the previous term might currently be stored in the current node, or in the previous binop_node, depending on whether there was one
                         let (term_node, binop_ptr) = if let Some(previous_binop_ptr) = binop_opt {
                             let previous_binop = previous_binop_ptr.as_mut().unwrap();
@@ -582,7 +583,7 @@ where
                             TokenSym(Times) => { Binop::Mul },
                             TokenSym(Divide) => { Binop::Div },
                             _ => panic!("parsed something different than a times or divide for some reason")
-                        }), None, None);
+                        }), None, None, self.line, self.pos);
                         // the previous term might currently be stored in the current node, or in the previous binop_node, depending on whether there was one
                         let (factor_node, binop_ptr) = if let Some(previous_binop_ptr) = binop_opt {
                             let previous_binop = previous_binop_ptr.as_mut().unwrap();
@@ -603,17 +604,14 @@ where
                     Ok(())
                 }
                 Factor => {
-                    let mut call_node = Node::new(SyntaxElement::Call, None, None);
-                    if let Ok(()) = self.parse_symbol_ext(InternProcedureCall, &mut call_node, None, node_hint) {
-                        add_node_with_hint(current_node, call_node, node_additions, node_hint.expect("factors always need node hints"));
-                    } else {
-                        drop(call_node);
-                        let mut var_node = Node::new(SyntaxElement::Var, None, None);
+                    if let Ok(()) = self.parse_symbol_ext(InternProcedureCall, current_node, None, node_hint) {}
+                    else {
+                        let mut var_node = Node::new(SyntaxElement::Var, None, None, self.line, self.pos);
                         if let Ok(()) = self.parse_symbol(TokenSym(dummy_ident.clone()), &mut var_node) {
                             add_node_with_hint(current_node, var_node, node_additions, node_hint.expect("factors always need node hints"));
                         } else {
                             drop(var_node);
-                            let mut const_node = Node::new(SyntaxElement::Const, None, None);
+                            let mut const_node = Node::new(SyntaxElement::Const, None, None, self.line, self.pos);
                             if let Ok(()) = self.parse_symbol(TokenSym(dummy_number.clone()), &mut const_node) {
                                 add_node_with_hint(current_node, const_node, node_additions, node_hint.expect("factors always need node hints"));
                             } else {

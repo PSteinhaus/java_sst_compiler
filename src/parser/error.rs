@@ -5,7 +5,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::mem::Discriminant;
 use dyn_clone::{clone_trait_object, DynClone};
-use crate::parser::sym_table::EntryType;
+use crate::parser::sym_table::{EntryType, Type};
 
 pub trait ParseError: Error + DynClone {}
 
@@ -197,6 +197,71 @@ impl Display for TypeMismatch {
             self.symbol_name,
             self.found,
             self.expected
+        )
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct IncompatibleTypes {
+    left_type: Type,
+    right_type: Type,
+    line: LNum,
+    pos: CPos,
+}
+
+impl IncompatibleTypes {
+    pub fn new(left_type: Type, right_type: Type, line: LNum, pos: CPos) -> Self {
+        Self {
+            left_type,
+            right_type,
+            line,
+            pos,
+        }
+    }
+}
+
+impl Error for IncompatibleTypes {}
+impl ParseError for IncompatibleTypes {}
+
+impl Display for IncompatibleTypes {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "left operand has type: {:?}, right operand has type: {:?} on line {}, pos {}",
+            self.left_type,
+            self.right_type,
+            self.line,
+            self.pos,
+        )
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct VoidOperand {
+    line: LNum,
+    pos: CPos,
+}
+
+impl VoidOperand {
+    pub fn new(line: LNum, pos: CPos) -> Self {
+        Self {
+            line,
+            pos
+        }
+    }
+}
+
+impl Error for VoidOperand {}
+impl ParseError for VoidOperand {}
+
+impl Display for VoidOperand {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "tried to use void as an operand on line {}, pos {}",
+            self.line, self.pos
         )
     }
 }

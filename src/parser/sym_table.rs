@@ -2,6 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 use crate::parser::error::{DoubleDeclaration, ParseError};
+use crate::parser::sym_table::Type::Int;
 use crate::SSTint;
 
 #[derive(Debug)]
@@ -95,9 +96,19 @@ pub enum ResultType {
     Void,
 }
 
+impl ResultType {
+    pub fn to_type(&self) -> Option<Type> {
+        match self {
+            ResultType::Int => Some(Int(0)), // 0 as a placeholder
+            ResultType::Void => None
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone)]
 pub enum Type {
     Int(SSTint),
+    Bool(bool),
 }
 
 #[derive(Debug)]

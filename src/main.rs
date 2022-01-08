@@ -19,6 +19,7 @@ fn main() {
     let parser = Parser::new(scanner);
     let (_sym_table, ast) = parser.parse().unwrap();
     println!("{}", ast.dot_representation());
+    crate::parser::semantic::check(&ast).unwrap();
     /*
     while let Some(sym) = scanner.read_token() {
         println!("{:?}", sym);
