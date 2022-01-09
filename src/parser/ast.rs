@@ -141,6 +141,7 @@ impl Node {
     pub fn set_obj(&mut self, obj: Option<Rc<RefCell<SymEntry>>>) {
         self.obj = obj;
     }
+    pub fn get_obj(&self) -> &Option<Rc<RefCell<SymEntry>>> { &self.obj }
     pub fn set_return_val(&mut self, val: Option<Type>) {
         self.return_val = val;
     }
@@ -177,7 +178,7 @@ impl Node {
             return match sym_entry.entry_type() {
                 EntryType::Var(t) => Some(*t),
                 EntryType::Const(t) => Some(*t),
-                EntryType::Proc(_, _, returnType) => returnType.to_type(),
+                EntryType::Proc(_, _, return_type) => return_type.to_type(),
                 _ => None
             };
         }

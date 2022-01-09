@@ -265,3 +265,32 @@ impl Display for VoidOperand {
         )
     }
 }
+
+
+#[derive(Debug, Clone)]
+pub struct ArgumentMismatch {
+    line: LNum,
+    pos: CPos,
+}
+
+impl ArgumentMismatch {
+    pub fn new(line: LNum, pos: CPos) -> Self {
+        Self {
+            line,
+            pos
+        }
+    }
+}
+
+impl Error for ArgumentMismatch {}
+impl ParseError for ArgumentMismatch {}
+
+impl Display for ArgumentMismatch {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "arguments don't match parameters on line {}, pos {}",
+            self.line, self.pos
+        )
+    }
+}

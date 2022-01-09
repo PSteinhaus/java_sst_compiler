@@ -1,16 +1,16 @@
 //! functionality for checking the semantic of an AST with a corresponding symbol table
 
 use crate::parser::ast::{Node, SyntaxElement};
-use crate::parser::error::{CheckResult, IncompatibleTypes, ParseError, VoidOperand};
+use crate::parser::error::{ArgumentMismatch, CheckResult, IncompatibleTypes, ParseError, VoidOperand};
 use crate::parser::sym_table::Type;
 use std::mem::discriminant as d;
 
 /// performs all five necessary checks on the AST:
-/// * type-compatibility of operands used by operators
+/// * type-compatibility of operands used by operators (including assignment)
 /// * matching parameters for function calls
-/// * functions returning the proposed type
-/// * conditions actually compute booleans
-/// * variables are defined before use
+/// * TODO: functions returning the proposed type
+/// * TODO: conditions actually compute booleans
+/// * TODO: variables are defined before use
 pub fn check(node: &Node) -> CheckResult {
     // first traverse the ast to the left side
     if let Some(left_node) = node.borrow_left() { check(left_node)?; }
@@ -19,7 +19,7 @@ pub fn check(node: &Node) -> CheckResult {
         SyntaxElement::Class => {}
         SyntaxElement::Init => {}
         SyntaxElement::Enter => {}
-        SyntaxElement::Call => {}
+        SyntaxElement::Call => { check_arguments(node)?; }
         SyntaxElement::Assign | SyntaxElement::Binop(_) => { compatible_op_type(node)?; }
         SyntaxElement::Var => {}
         SyntaxElement::Const => {}
@@ -58,9 +58,35 @@ pub fn compatible_op_type(node: &Node) -> Result<Type, Box<dyn ParseError>> {
         SyntaxElement::Call => {
             // check if your type is void and return your type if not
             let my_type = node.value_type();
-            if let Some(t) = my_type { return Ok(t); }
-            else { return Err(Box::new(VoidOperand::new(node.line(), node.pos()))); }
+            return if let Some(t) = my_type { Ok(t) } else { Err(Box::new(VoidOperand::new(node.line(), node.pos()))) }
         }
         _ => panic!("tried to compute operand types for a node that is neither an operator nor a variable/literal; this probably means the syntax check for operations is faulty")
     }
+}
+
+/// checks whether the arguments given match the expected parameters
+pub fn check_arguments(node: &Node) -> CheckResult {
+    let proc_entry = node.get_obj().as_ref().expect("call has no sym table entry").borrow();
+    let parameters = proc_entry.params().expect("parameters were not set");
+    // the arguments are the left child and its links
+    let mut argument = node.borrow_left();
+    for p in parameters {
+        // check whether there is another argument
+        if let Some(argument_node) = argument {
+            // check whether the type matches
+            if d(&p.0) != d(&argument_node.value_type().expect("faulty parse accepted argument without value type")) {
+                // argument with wrong type found
+                return Err(Box::new(ArgumentMismatch::new(node.line(), node.pos())));
+            }
+            // prepare the next argument
+            argument = argument_node.borrow_link();
+        } else {
+            // no argument found, though another parameter is expected
+            return Err(Box::new(ArgumentMismatch::new(node.line(), node.pos())));
+        }
+    }
+    // after going through all the links `argument` should be `None` now
+    // if it isn't then there are more arguments than parameters
+    if argument.is_some() { return Err(Box::new(ArgumentMismatch::new(node.line(), node.pos()))); }
+    Ok(())
 }

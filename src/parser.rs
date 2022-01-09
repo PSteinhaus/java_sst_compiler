@@ -507,9 +507,11 @@ where
                     self.try_symbol(TokenSym(ParOpen))?;
                     if let Ok(()) = self.parse_symbol_ext(Expression, current_node, None, node_hint) {
                         // borrow the added expression node from the current node in order to be able to pass it on and add links to the following expressions
-                        let first_expr_node = borrow_node_with_hint(current_node, node_hint.expect("params need a hint")).unwrap();
+                        let mut expr_node = borrow_node_with_hint(current_node, node_hint.expect("params need a hint")).unwrap();
                         // find all following expressions
-                        while let Ok(()) = self.parse_sequence(&[TokenSym(Comma), Expression], first_expr_node, Some(NodeHint::Link)) {}
+                        while let Ok(()) = self.parse_sequence(&[TokenSym(Comma), Expression], expr_node, Some(NodeHint::Link)) {
+                            expr_node = expr_node.borrow_link_mut().expect("expression was parsed as an argument, but not added as a link for some reason");
+                        }
                         node_additions.mark_with_hint(node_hint.unwrap());
                     }
                     self.try_symbol(TokenSym(ParClose))
