@@ -9,7 +9,7 @@ use std::mem::discriminant as d;
 /// * type-compatibility of operands used by operators (including assignment)
 /// * matching parameters for function calls
 /// * functions returning the proposed type on all execution paths
-/// * TODO: conditions actually compute booleans
+/// * conditions actually compute booleans
 /// * TODO: variables are defined before use
 pub fn check(node: &Node) -> CheckResult {
     // first traverse the ast to the left side
@@ -24,8 +24,15 @@ pub fn check(node: &Node) -> CheckResult {
         SyntaxElement::Var => {}
         SyntaxElement::Const => {}
         SyntaxElement::IfElse => {}
-        SyntaxElement::If => {}
-        SyntaxElement::While => {}
+        SyntaxElement::If | SyntaxElement::While => {
+            // check whether the left child (the condition) actually computes a boolean
+            if let SyntaxElement::Binop(op) = node.borrow_left().expect("parser accepted if/while without condition").node_type() {
+                let v_type = op.value_type();
+                if let Type::Bool(_) = v_type {} else {
+                    return Err(Box::new(WrongOperandType::new(node.line(), node.pos(), v_type, node.node_type())))
+                }
+            }
+        }
         SyntaxElement::Return => {}
     }
     // then your right child

@@ -564,7 +564,7 @@ where
                         } else {
                             let t_node = take_node_with_hint(current_node, hint);
                             add_node_with_hint(current_node, binop_node, node_additions, hint);
-                            (t_node, current_node.borrow_right_mut().unwrap() as *mut Node)
+                            (t_node, borrow_node_with_hint(current_node, hint).unwrap() as *mut Node)
                         };
                         (*binop_ptr).set_left_boxed(term_node.unwrap()); // term_node should exist as the first assumption should have lead to it being added
                         // now assume that the following term is indeed the last one of this simple expression and therefore add it as the right child of the binop
@@ -595,7 +595,7 @@ where
                         } else {
                             let f_node = take_node_with_hint(current_node, hint);
                             add_node_with_hint(current_node, binop_node, node_additions, hint);
-                            (f_node, current_node.borrow_right_mut().unwrap() as *mut Node)
+                            (f_node, borrow_node_with_hint(current_node, hint).unwrap() as *mut Node)
                         };
                         (*binop_ptr).set_left_boxed(factor_node.unwrap()); // factor_node should exist as the first assumption should have lead to it being added
                         // now assume that the following factor is indeed the last one of this term and therefore add it as the right child of the binop
