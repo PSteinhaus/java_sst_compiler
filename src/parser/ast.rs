@@ -272,6 +272,15 @@ pub enum Binop {
     LargerEqual,
 }
 
+impl Binop {
+    pub fn value_type(&self) -> Type {
+        match self {
+            Binop::Add | Binop::Sub | Binop::Mul | Binop::Div => Type::Int(0),
+            Binop::Equals | Binop::Smaller | Binop::SmallerEqual | Binop::Larger | Binop::LargerEqual => Type::Bool(false)
+        }
+    }
+}
+
 /// A helper struct to construct a DOT representation of the AST
 pub struct DotBuilder {
     content: String,

@@ -17,9 +17,16 @@ fn main() {
     let input = Input::new(path::PathBuf::from("parsetest.txt")).unwrap();
     let scanner = Scanner::new(input);
     let parser = Parser::new(scanner);
-    let (_sym_table, ast) = parser.parse().unwrap();
-    println!("{}", ast.dot_representation());
-    crate::parser::semantic::check(&ast).unwrap();
+    match parser.parse() {
+        Ok((_sym_table, ast)) => {
+            println!("{}", ast.dot_representation());
+            let result = crate::parser::semantic::check(&ast);
+            if let Err(e) = result {
+                panic!("{}", e.to_string());
+            }
+        },
+        Err(e) => panic!("{}", e.to_string())
+    }
     /*
     while let Some(sym) = scanner.read_token() {
         println!("{:?}", sym);

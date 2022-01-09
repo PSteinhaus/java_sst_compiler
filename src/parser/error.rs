@@ -5,6 +5,7 @@ use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::mem::Discriminant;
 use dyn_clone::{clone_trait_object, DynClone};
+use crate::parser::ast::SyntaxElement;
 use crate::parser::sym_table::{EntryType, Type};
 
 pub trait ParseError: Error + DynClone {}
@@ -291,6 +292,70 @@ impl Display for ArgumentMismatch {
             f,
             "arguments don't match parameters on line {}, pos {}",
             self.line, self.pos
+        )
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct WrongOperandType {
+    line: LNum,
+    pos: CPos,
+    wrong_type: Type,
+    operator_type: SyntaxElement,
+}
+
+impl WrongOperandType {
+    pub fn new(line: LNum, pos: CPos, wrong_type: Type, operator_type: SyntaxElement) -> Self {
+        Self {
+            line,
+            pos,
+            wrong_type,
+            operator_type,
+        }
+    }
+}
+
+impl Error for WrongOperandType {}
+impl ParseError for WrongOperandType {}
+
+impl Display for WrongOperandType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "tried to use {:?} as an operand type for {:?} on line {}, pos {}",
+            self.wrong_type, self.operator_type, self.line, self.pos
+        )
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct WrongReturnType {
+    line: LNum,
+    pos: CPos,
+    desired_type: Type,
+}
+
+impl WrongReturnType {
+    pub fn new(line: LNum, pos: CPos, desired_type: Type) -> Self {
+        Self {
+            line,
+            pos,
+            desired_type,
+        }
+    }
+}
+
+impl Error for WrongReturnType {}
+impl ParseError for WrongReturnType {}
+
+impl Display for WrongReturnType {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "function declared on line {}, pos {} doesn't always return the specified type of {:?}",
+            self.line, self.pos, self.desired_type
         )
     }
 }
