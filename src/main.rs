@@ -24,8 +24,8 @@ fn main() {
             if let Err(e) = result {
                 panic!("{}", e.to_string());
             }
-        },
-        Err(e) => panic!("{}", e.to_string())
+        }
+        Err(e) => panic!("{}", e.to_string()),
     }
     /*
     while let Some(sym) = scanner.read_token() {

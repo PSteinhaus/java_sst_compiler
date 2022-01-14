@@ -28,13 +28,6 @@ impl SymTable {
             if let Some(table) = weak_table.upgrade() {
                 return table.borrow().get_entry(name);
             }
-            //let table_ptr = weak_table.as_ptr();
-            //unsafe {
-                // safe as long as the enclosing table will always live at least as long as this table (should be always)
-                //if let Some(entry_ref) = (*table_ptr).borrow_mut().get_entry(name) {
-                //    return Some(&*(entry_ref as *const SymEntry) as & 'static SymEntry);
-                //}
-            //}
         }
         None
     }
@@ -66,13 +59,26 @@ impl SymTable {
     pub fn add_block(&mut self, self_directed_weak: Weak<RefCell<SymTable>>) -> Result<(Rc<RefCell<SymTable>>, String), Box<dyn ParseError>> {
         let block_sym_table = Rc::new(RefCell::new(SymTable::new(Some(self_directed_weak))));
         let block_name = self.block_counter.to_string();
-        let new_block = Rc::new(RefCell::new(SymEntry::new(block_name.clone(), EntryType::Block(block_sym_table.clone()))));
+        let new_block = Rc::new(RefCell::new(SymEntry::new(block_name.clone(),
+                                                           EntryType::Block(block_sym_table.clone()))));
         if let Err(e) = self.add_entry(new_block) {
             return Err(e);
         }
         // increment the block counter
         self.block_counter += 1;
         Ok((block_sym_table, block_name))
+    }
+
+    /// Returns the names of all variables (including final variables, i.e. constants) in this table.
+    pub fn var_names(&self) -> Vec<String> {
+        let mut v_entries = vec![];
+        for e in self.entries.iter() {
+            match e.1.borrow().entry_type {
+                EntryType::Var(_) | EntryType::Const(_) => { v_entries.push((*e.0).clone()) }
+                _ => {}
+            }
+        }
+        v_entries
     }
 }
 

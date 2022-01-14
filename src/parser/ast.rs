@@ -1,10 +1,10 @@
-use std::borrow::{Borrow, BorrowMut};
-use std::cell::{RefCell};
-use std::ops::{Deref};
-use std::rc::Rc;
 use crate::input::{CPos, LNum};
 use crate::parser::error::{ParseResult, UndefinedSymbol};
 use crate::parser::sym_table::{EntryType, SymEntry, Type};
+use std::borrow::{Borrow, BorrowMut};
+use std::cell::RefCell;
+use std::ops::Deref;
+use std::rc::Rc;
 
 // TODO: create function that returns syntax tree in DOT format
 
@@ -23,7 +23,13 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(node_type: SyntaxElement, return_val: Option<Type>, obj: Option<Rc<RefCell<SymEntry>>>, line: LNum, pos: CPos) -> Self {
+    pub fn new(
+        node_type: SyntaxElement,
+        return_val: Option<Type>,
+        obj: Option<Rc<RefCell<SymEntry>>>,
+        line: LNum,
+        pos: CPos,
+    ) -> Self {
         Self {
             left: None,
             right: None,
@@ -36,8 +42,12 @@ impl Node {
         }
     }
 
-    pub fn line(&self) -> LNum { self.line }
-    pub fn pos(&self) -> CPos { self.pos }
+    pub fn line(&self) -> LNum {
+        self.line
+    }
+    pub fn pos(&self) -> CPos {
+        self.pos
+    }
 
     pub fn has_children(&self) -> bool {
         self.left.is_some() || self.right.is_some()
@@ -141,18 +151,24 @@ impl Node {
     pub fn set_obj(&mut self, obj: Option<Rc<RefCell<SymEntry>>>) {
         self.obj = obj;
     }
-    pub fn get_obj(&self) -> &Option<Rc<RefCell<SymEntry>>> { &self.obj }
+    pub fn get_obj(&self) -> &Option<Rc<RefCell<SymEntry>>> {
+        &self.obj
+    }
     pub fn set_return_val(&mut self, val: Option<Type>) {
         self.return_val = val;
     }
 
     pub fn resolve_table_links(&mut self) -> ParseResult {
-        if let Some(node) = &mut self.left { node.resolve_table_links()?; }
+        if let Some(node) = &mut self.left {
+            node.resolve_table_links()?;
+        }
 
         if let Some(entry) = &self.obj {
             let sym_entry = entry.deref().borrow();
             if let EntryType::Unresolved(weak_table) = sym_entry.entry_type() {
-                let table = weak_table.upgrade().expect("sym table was lost for some reason");
+                let table = weak_table
+                    .upgrade()
+                    .expect("sym table was lost for some reason");
                 let unresolved_name = sym_entry.name();
                 let desired_entry_option = table.deref().borrow().get_entry(unresolved_name);
                 if let Some(desired_entry) = desired_entry_option {
@@ -164,8 +180,12 @@ impl Node {
             }
         }
 
-        if let Some(node) = &mut self.right { node.resolve_table_links()?; }
-        if let Some(node) = &mut self.link { node.resolve_table_links()?; }
+        if let Some(node) = &mut self.right {
+            node.resolve_table_links()?;
+        }
+        if let Some(node) = &mut self.link {
+            node.resolve_table_links()?;
+        }
         Ok(())
     }
 
@@ -179,7 +199,7 @@ impl Node {
                 EntryType::Var(t) => Some(*t),
                 EntryType::Const(t) => Some(*t),
                 EntryType::Proc(_, _, return_type) => return_type.to_type(),
-                _ => None
+                _ => None,
             };
         }
         None
@@ -256,7 +276,7 @@ pub enum SyntaxElement {
     IfElse,
     If,
     While,
-    Return
+    Return,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -276,7 +296,11 @@ impl Binop {
     pub fn value_type(&self) -> Type {
         match self {
             Binop::Add | Binop::Sub | Binop::Mul | Binop::Div => Type::Int(0),
-            Binop::Equals | Binop::Smaller | Binop::SmallerEqual | Binop::Larger | Binop::LargerEqual => Type::Bool(false)
+            Binop::Equals
+            | Binop::Smaller
+            | Binop::SmallerEqual
+            | Binop::Larger
+            | Binop::LargerEqual => Type::Bool(false),
         }
     }
 }
@@ -291,7 +315,7 @@ impl DotBuilder {
     pub fn new() -> Self {
         Self {
             content: "".to_string(),
-            node_num: 0
+            node_num: 0,
         }
     }
 
@@ -308,7 +332,11 @@ impl DotBuilder {
     }
 
     fn restrict_latest(&mut self) {
-        let s = format!("{{ rank = same; {}; {}; }}\n", self.node_num - 2, self.node_num - 1);
+        let s = format!(
+            "{{ rank = same; {}; {}; }}\n",
+            self.node_num - 2,
+            self.node_num - 1
+        );
         self.content.push_str(s.as_str());
     }
 
@@ -330,15 +358,20 @@ impl DotBuilder {
         self.content
     }
 
-    fn latest_id(&self) -> usize { self.node_num - 1 }
+    fn latest_id(&self) -> usize {
+        self.node_num - 1
+    }
 
     fn enforce_ordering(&mut self, left: usize, right: usize) {
-        self.content.push_str(&*format!("{{\
+        self.content.push_str(&*format!(
+            "{{\
 rank = same;\
 edge[style=invis];\
 {} -> {};\
 rankdir = LR;\
-}}\n", left, right));
+}}\n",
+            left, right
+        ));
     }
 
     fn add_node(&mut self, node: &Node) {

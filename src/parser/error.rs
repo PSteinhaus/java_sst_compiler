@@ -1,16 +1,16 @@
 use crate::input::{CPos, LNum};
+use crate::parser::ast::SyntaxElement;
+use crate::parser::sym_table::{EntryType, Type};
 use crate::parser::Symbol;
 use crate::scanner::{TWithPos, Token};
+use dyn_clone::{clone_trait_object, DynClone};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::mem::Discriminant;
-use dyn_clone::{clone_trait_object, DynClone};
-use crate::parser::ast::SyntaxElement;
-use crate::parser::sym_table::{EntryType, Type};
 
 pub trait ParseError: Error + DynClone {}
 
-clone_trait_object!(ParseError);    // creates a DynClone implementation that just creates a new dynamic object based on a clone of the specific ParseError object
+clone_trait_object!(ParseError); // creates a DynClone implementation that just creates a new dynamic object based on a clone of the specific ParseError object
 
 pub type CheckResult = Result<(), Box<dyn ParseError>>;
 pub type ParseResult = Result<(), Box<dyn ParseError>>;
@@ -120,7 +120,6 @@ impl Display for SymbolsNotFound {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct DoubleDeclaration {
     name: String,
@@ -137,11 +136,7 @@ impl ParseError for DoubleDeclaration {}
 
 impl Display for DoubleDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "double declaration of {:?}",
-            self.name
-        )
+        write!(f, "double declaration of {:?}", self.name)
     }
 }
 
@@ -161,20 +156,15 @@ impl ParseError for UndefinedSymbol {}
 
 impl Display for UndefinedSymbol {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:?} has not been defined yet",
-            self.name
-        )
+        write!(f, "{:?} has not been defined yet", self.name)
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct TypeMismatch {
     symbol_name: String,
     expected: String,
-    found:  Discriminant<EntryType>,
+    found: Discriminant<EntryType>,
 }
 
 impl TypeMismatch {
@@ -195,13 +185,10 @@ impl Display for TypeMismatch {
         write!(
             f,
             "{} has type: {:?}\nexpected: {}",
-            self.symbol_name,
-            self.found,
-            self.expected
+            self.symbol_name, self.found, self.expected
         )
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct IncompatibleTypes {
@@ -230,14 +217,10 @@ impl Display for IncompatibleTypes {
         write!(
             f,
             "left operand has type: {:?}, right operand has type: {:?} on line {}, pos {}",
-            self.left_type,
-            self.right_type,
-            self.line,
-            self.pos,
+            self.left_type, self.right_type, self.line, self.pos,
         )
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct VoidOperand {
@@ -247,10 +230,7 @@ pub struct VoidOperand {
 
 impl VoidOperand {
     pub fn new(line: LNum, pos: CPos) -> Self {
-        Self {
-            line,
-            pos
-        }
+        Self { line, pos }
     }
 }
 
@@ -267,7 +247,6 @@ impl Display for VoidOperand {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct ArgumentMismatch {
     line: LNum,
@@ -276,10 +255,7 @@ pub struct ArgumentMismatch {
 
 impl ArgumentMismatch {
     pub fn new(line: LNum, pos: CPos) -> Self {
-        Self {
-            line,
-            pos
-        }
+        Self { line, pos }
     }
 }
 
@@ -295,7 +271,6 @@ impl Display for ArgumentMismatch {
         )
     }
 }
-
 
 #[derive(Debug, Clone)]
 pub struct WrongOperandType {
@@ -329,7 +304,6 @@ impl Display for WrongOperandType {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct WrongReturnType {
     line: LNum,
@@ -356,6 +330,32 @@ impl Display for WrongReturnType {
             f,
             "function declared on line {}, pos {} doesn't always return the specified type of {:?}",
             self.line, self.pos, self.desired_type
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct UninitializedVar {
+    line: LNum,
+    pos: CPos,
+    name: String,
+}
+
+impl UninitializedVar {
+    pub fn new(line: LNum, pos: CPos, name: String) -> Self {
+        Self { line, pos, name }
+    }
+}
+
+impl Error for UninitializedVar {}
+impl ParseError for UninitializedVar {}
+
+impl Display for UninitializedVar {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "variable {} on line {}, pos {} might not be initialized!",
+            self.name, self.line, self.pos
         )
     }
 }

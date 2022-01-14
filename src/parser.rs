@@ -2,14 +2,16 @@
 //!
 //! this includes syntax-checking and the creation of the AST
 
-mod error;
-mod sym_table;
 mod ast;
+mod error;
 pub mod semantic;
+mod sym_table;
 
 use crate::input::{CPos, LNum};
+use crate::parser::ast::{Binop, Node, SyntaxElement};
 use crate::parser::error::*;
-use crate::parser::sym_table::{Type, ResultType, SymEntry, SymTable, EntryType};
+use crate::parser::sym_table::{EntryType, ResultType, SymEntry, SymTable, Type};
+use crate::parser::Symbol::TokenSym;
 use crate::scanner;
 use crate::scanner::Token::{
     Comma, CurlyClose, CurlyOpen, Divide, Else, Equals, EqualsEquals, Final, If, Int, Larger,
@@ -17,21 +19,19 @@ use crate::scanner::Token::{
     Times, Void, While,
 };
 use crate::scanner::{TWithPos, Token};
-use std::cell::{RefCell};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::fmt::Debug;
 use std::mem::discriminant as d;
 use std::ops::Deref;
 use std::rc::Rc;
-use crate::parser::ast::{Binop, Node, SyntaxElement};
-use crate::parser::Symbol::TokenSym;
 
 #[derive(Debug, Clone)]
 pub enum Symbol {
     Class,
     Classbody,
     Declarations,
-    FinalDeclaration, // added to make implementation easier
+    FinalDeclaration,    // added to make implementation easier
     NonFinalDeclaration, // added
     MethodDeclaration,
     MethodHead,
@@ -156,7 +156,7 @@ where
             token_buffer: Queue::<TWithPos>::new(),
             line: 0,
             pos: 0,
-            ast: Node::new(SyntaxElement::Class, None, None, 0, 0),   // just a placeholder
+            ast: Node::new(SyntaxElement::Class, None, None, 0, 0), // just a placeholder
             sym_table: head_table.clone(),
             sym_table_current: head_table,
             best_line: 0,
@@ -182,7 +182,12 @@ where
         if let Err(e) = res {
             // print the error that stopped the parser from progressing beyond the furthest it has ever read
             // (which is hopefully the error that actually caused the final failure)
-            eprintln!("Parsing failed, probable source at line {}, pos {}, {}", self.best_line, self.best_pos, self.best_error.unwrap().deref().to_string());
+            eprintln!(
+                "Parsing failed, probable source at line {}, pos {}, {}",
+                self.best_line,
+                self.best_pos,
+                self.best_error.unwrap().deref().to_string()
+            );
             return Err(e);
         } else {
             // try to find all missing symbol table links in the ast
@@ -204,12 +209,18 @@ where
     ///
     /// This variant also takes a Vec to collect added symbol table entry names (in case we have to remove them later)
     /// and possibly a hint as to where the next node should be added.
-    fn parse_symbol_ext(&mut self, symbol: Symbol, current_node: &mut Node, added_sym_names: Option<&mut Vec<String>>, node_hint: Option<NodeHint>) -> ParseResult {
+    fn parse_symbol_ext(
+        &mut self,
+        symbol: Symbol,
+        current_node: &mut Node,
+        added_sym_names: Option<&mut Vec<String>>,
+        node_hint: Option<NodeHint>,
+    ) -> ParseResult {
         use Symbol::*;
         let dummy_ident = scanner::Token::Ident("".to_string());
         let dummy_number = scanner::Token::Number(0);
 
-        let mut new_sym_name_vec = Vec::new();  // doesn't actually allocate anything as long as it's not needed
+        let mut new_sym_name_vec = Vec::new(); // doesn't actually allocate anything as long as it's not needed
         let added_sym_names = added_sym_names.unwrap_or(&mut new_sym_name_vec);
         let mut new_node_additions = NodeAdditions::new();
         let node_additions = &mut new_node_additions;
@@ -224,11 +235,20 @@ where
 
                     let weak_enclose = Rc::downgrade(&self.sym_table_current);
                     let class_sym_table = Rc::new(RefCell::new(SymTable::new(Some(weak_enclose))));
-                    let class_entry = Rc::new(RefCell::new(SymEntry::new(class_name, EntryType::Class(class_sym_table.clone()))));
+                    let class_entry = Rc::new(RefCell::new(SymEntry::new(
+                        class_name,
+                        EntryType::Class(class_sym_table.clone()),
+                    )));
                     self.add_sym_table_entry(class_entry.clone(), added_sym_names).expect("couldn't add class entry, probably due to duplicate class name (should never happen in JavaSST)");
 
                     // start the ast
-                    let mut first_node = Node::new(SyntaxElement::Class, None, Some(class_entry), self.line, self.pos);
+                    let mut first_node = Node::new(
+                        SyntaxElement::Class,
+                        None,
+                        Some(class_entry),
+                        self.line,
+                        self.pos,
+                    );
 
                     // set the class sym table to be the current one, because we now dive into the class
                     self.sym_table_current = class_sym_table;
@@ -243,7 +263,8 @@ where
                 }
                 Declarations => {
                     // start with the final declarations
-                    let mut init_node = Node::new(SyntaxElement::Init, None, None, self.line, self.pos);
+                    let mut init_node =
+                        Node::new(SyntaxElement::Init, None, None, self.line, self.pos);
                     if let Ok(()) = self.parse_symbol(FinalDeclaration, &mut init_node) {
                         let mut assign_node = init_node.borrow_left_mut().unwrap();
                         while let Ok(()) = self.parse_symbol(FinalDeclaration, assign_node) {
@@ -251,7 +272,7 @@ where
                         }
                     }
                     // then get the non-final declarations
-                    while let Ok(()) = self.parse_symbol(NonFinalDeclaration, &mut init_node) {}    // non-final declarations shouldn't need to touch the node
+                    while let Ok(()) = self.parse_symbol(NonFinalDeclaration, &mut init_node) {} // non-final declarations shouldn't need to touch the node
                     add_node_left(current_node, init_node, node_additions);
                     // then get the method declarations
                     if let Ok(()) = self.parse_symbol(MethodDeclaration, current_node) {
@@ -263,17 +284,30 @@ where
                     Ok(())
                 }
                 FinalDeclaration => {
-                    let mut assign_node = Node::new(SyntaxElement::Assign, None, None, self.line, self.pos);
+                    let mut assign_node =
+                        Node::new(SyntaxElement::Assign, None, None, self.line, self.pos);
 
                     self.try_symbol(TokenSym(Final))?;
                     let p_type = self.parse_type()?;
                     let name = self.parse_identifier()?;
-                    let entry = Rc::new(RefCell::new(SymEntry::new(name, EntryType::Const(p_type))));
-                    let const_node = Node::new(SyntaxElement::Var, None, Some(entry.clone()), self.line, self.pos);
+                    let entry =
+                        Rc::new(RefCell::new(SymEntry::new(name, EntryType::Const(p_type))));
+                    let const_node = Node::new(
+                        SyntaxElement::Var,
+                        None,
+                        Some(entry.clone()),
+                        self.line,
+                        self.pos,
+                    );
                     assign_node.set_left(Some(const_node));
                     self.try_symbol(TokenSym(Equals))?;
 
-                    self.parse_symbol_ext(Expression, &mut assign_node, None, Some(NodeHint::Right))?;
+                    self.parse_symbol_ext(
+                        Expression,
+                        &mut assign_node,
+                        None,
+                        Some(NodeHint::Right),
+                    )?;
                     self.try_symbol(TokenSym(Semicolon))?;
 
                     self.add_sym_table_entry(entry.clone(), added_sym_names)?;
@@ -302,10 +336,17 @@ where
                 }
                 MethodDeclaration => {
                     let method_entry = self.parse_method_head()?;
-                    let method_sym_table = method_entry.deref().borrow().sym_table().unwrap().clone();
+                    let method_sym_table =
+                        method_entry.deref().borrow().sym_table().unwrap().clone();
                     self.add_sym_table_entry(method_entry.clone(), added_sym_names)?;
 
-                    let mut enter_node = Node::new(SyntaxElement::Enter, None, Some(method_entry), self.line, self.pos);
+                    let mut enter_node = Node::new(
+                        SyntaxElement::Enter,
+                        None,
+                        Some(method_entry),
+                        self.line,
+                        self.pos,
+                    );
 
                     // now we're diving into the method body so enter the method's sym table
                     self.sym_table_current = method_sym_table;
@@ -348,7 +389,12 @@ where
                     // find all local declarations
                     while let Ok(()) = self.parse_symbol(LocalDeclaration, current_node) {}
                     // then the statement sequence
-                    self.parse_symbol_ext(StatementSequence, current_node, None, Some(NodeHint::Right))?;
+                    self.parse_symbol_ext(
+                        StatementSequence,
+                        current_node,
+                        None,
+                        Some(NodeHint::Right),
+                    )?;
                     self.try_symbol(TokenSym(CurlyClose))
                 }
                 LocalDeclaration => {
@@ -356,7 +402,10 @@ where
                     let identifier = self.parse_identifier()?;
                     self.try_symbol(TokenSym(Semicolon))?;
 
-                    let decl_entry = Rc::new(RefCell::new(SymEntry::new(identifier, EntryType::Var(d_type))));
+                    let decl_entry = Rc::new(RefCell::new(SymEntry::new(
+                        identifier,
+                        EntryType::Var(d_type),
+                    )));
                     self.add_sym_table_entry(decl_entry, added_sym_names)?;
                     Ok(())
                 }
@@ -367,41 +416,63 @@ where
                         NodeHint::Right => current_node.borrow_right_mut().unwrap(),
                         NodeHint::Link => current_node.borrow_link_mut().unwrap(),
                     };
-                    while let Ok(()) = self.parse_symbol_ext(Statement, stat_node, None, Some(NodeHint::Link)) {
+                    while let Ok(()) =
+                        self.parse_symbol_ext(Statement, stat_node, None, Some(NodeHint::Link))
+                    {
                         // set the new stat node to be the current one, so that the next statement is added as a link starting from that one
                         stat_node = stat_node.borrow_link_mut().unwrap();
                     }
                     Ok(())
                 }
                 Statement => {
-                    match self.parse_symbols_ext(&[
-                        Assignment,
-                        ProcedureCall,
-                        IfStatement,
-                        WhileStatement,
-                        ReturnStatement,
-                    ], current_node, node_hint) {
+                    match self.parse_symbols_ext(
+                        &[
+                            Assignment,
+                            ProcedureCall,
+                            IfStatement,
+                            WhileStatement,
+                            ReturnStatement,
+                        ],
+                        current_node,
+                        node_hint,
+                    ) {
                         Ok(_) => Ok(()),
-                        Err(e) => Err(e)
+                        Err(e) => Err(e),
                     }
-                },
+                }
                 Type => {
                     self.parse_type()?;
                     Ok(())
-                },
+                }
                 Assignment => {
                     let var_ident = self.parse_identifier()?;
-                    let en = self.sym_table_current.deref().borrow().get_entry(var_ident.as_str());
+                    let en = self
+                        .sym_table_current
+                        .deref()
+                        .borrow()
+                        .get_entry(var_ident.as_str());
                     if let Some(entry) = en {
-                        let var_node = Node::new(SyntaxElement::Var, None, Some(entry), self.line, self.pos);
-                        let mut assign_node = Node::new(SyntaxElement::Assign, None, None, self.line, self.pos);
+                        let var_node =
+                            Node::new(SyntaxElement::Var, None, Some(entry), self.line, self.pos);
+                        let mut assign_node =
+                            Node::new(SyntaxElement::Assign, None, None, self.line, self.pos);
                         assign_node.set_left(Some(var_node));
 
                         self.try_symbol(TokenSym(Equals))?;
-                        self.parse_symbol_ext(Expression, &mut assign_node, None, Some(NodeHint::Right))?;
+                        self.parse_symbol_ext(
+                            Expression,
+                            &mut assign_node,
+                            None,
+                            Some(NodeHint::Right),
+                        )?;
                         self.try_symbol(TokenSym(Semicolon))?;
 
-                        add_node_with_hint(current_node, assign_node, node_additions, node_hint.expect("assignments need node hints"));
+                        add_node_with_hint(
+                            current_node,
+                            assign_node,
+                            node_additions,
+                            node_hint.expect("assignments need node hints"),
+                        );
                     } else {
                         return Err(Box::new(UndefinedSymbol::new(var_ident)));
                     }
@@ -413,21 +484,42 @@ where
                 }
                 InternProcedureCall => {
                     let procedure_name = self.parse_identifier()?;
-                    let en = self.sym_table_current.deref().borrow().get_entry(procedure_name.as_str());
+                    let en = self
+                        .sym_table_current
+                        .deref()
+                        .borrow()
+                        .get_entry(procedure_name.as_str());
                     let ast_entry = if let Some(entry) = en {
                         entry
                     } else {
                         // don't throw an error when a procedure isn't defined (yet) because it might get defined later...
                         // instead add a placeholder allowing to try and resolve the missing link later
-                        let placeholder = EntryType::Unresolved(Rc::downgrade(&self.sym_table_current));
+                        let placeholder =
+                            EntryType::Unresolved(Rc::downgrade(&self.sym_table_current));
                         Rc::new(RefCell::new(SymEntry::new(procedure_name, placeholder)))
                         //return Err(Box::new(UndefinedSymbol::new(procedure_name)));
                     };
-                    let mut call_node = Node::new(SyntaxElement::Call, None, Some(ast_entry), self.line, self.pos);
+                    let mut call_node = Node::new(
+                        SyntaxElement::Call,
+                        None,
+                        Some(ast_entry),
+                        self.line,
+                        self.pos,
+                    );
                     // set the actual parameters as the left child of the call node
-                    self.parse_symbol_ext(ActualParameters, &mut call_node, None, Some(NodeHint::Left))?;
+                    self.parse_symbol_ext(
+                        ActualParameters,
+                        &mut call_node,
+                        None,
+                        Some(NodeHint::Left),
+                    )?;
 
-                    add_node_with_hint(current_node, call_node, node_additions, node_hint.expect("proc calls need a hint"));
+                    add_node_with_hint(
+                        current_node,
+                        call_node,
+                        node_additions,
+                        node_hint.expect("proc calls need a hint"),
+                    );
 
                     Ok(())
                 }
@@ -435,7 +527,8 @@ where
                     self.try_symbol(TokenSym(If))?;
                     self.try_symbol(TokenSym(ParOpen))?;
 
-                    let mut if_else_node = Node::new(SyntaxElement::IfElse, None, None, self.line, self.pos);
+                    let mut if_else_node =
+                        Node::new(SyntaxElement::IfElse, None, None, self.line, self.pos);
                     let mut if_node = Node::new(SyntaxElement::If, None, None, self.line, self.pos);
 
                     self.parse_symbol_ext(Expression, &mut if_node, None, Some(NodeHint::Left))?;
@@ -445,12 +538,21 @@ where
 
                     // start a new block with it's own symbol table and add it as a new entry to the current sym table
                     let current_table = self.sym_table_current.clone();
-                    let (if_block_table, block_name) = self.sym_table_current.deref().borrow_mut().add_block(Rc::downgrade(&current_table))?;
+                    let (if_block_table, block_name) = self
+                        .sym_table_current
+                        .deref()
+                        .borrow_mut()
+                        .add_block(Rc::downgrade(&current_table))?;
                     added_sym_names.push(block_name);
                     // enter that table
                     self.sym_table_current = if_block_table;
                     // do things inside the block
-                    self.parse_symbol_ext(StatementSequence, &mut if_node, None, Some(NodeHint::Right))?;
+                    self.parse_symbol_ext(
+                        StatementSequence,
+                        &mut if_node,
+                        None,
+                        Some(NodeHint::Right),
+                    )?;
                     self.try_symbol(TokenSym(CurlyClose))?;
                     // leave the block
                     self.sym_table_current = current_table;
@@ -459,15 +561,29 @@ where
                     self.try_symbol(TokenSym(Else))?;
                     self.try_symbol(TokenSym(CurlyOpen))?;
                     // start a new block with it's own symbol table and add it as a new entry to the current sym table
-                    let (if_block_table, block_name) = self.sym_table_current.deref().borrow_mut().add_block(Rc::downgrade(&self.sym_table_current))?;
+                    let (if_block_table, block_name) = self
+                        .sym_table_current
+                        .deref()
+                        .borrow_mut()
+                        .add_block(Rc::downgrade(&self.sym_table_current))?;
                     added_sym_names.push(block_name);
                     // enter that table
                     self.sym_table_current = if_block_table;
                     // do things inside the block
-                    self.parse_symbol_ext(StatementSequence, &mut if_else_node, None, Some(NodeHint::Right))?;
+                    self.parse_symbol_ext(
+                        StatementSequence,
+                        &mut if_else_node,
+                        None,
+                        Some(NodeHint::Right),
+                    )?;
                     self.try_symbol(TokenSym(CurlyClose))?;
 
-                    add_node_with_hint(current_node, if_else_node, node_additions, node_hint.expect("if needs node hints"));
+                    add_node_with_hint(
+                        current_node,
+                        if_else_node,
+                        node_additions,
+                        node_hint.expect("if needs node hints"),
+                    );
                     // leaving the block is unnecessary as that happens at the end of parse_symbol anyway
                     Ok(())
                 }
@@ -475,41 +591,76 @@ where
                     self.try_symbol(TokenSym(While))?;
                     self.try_symbol(TokenSym(ParOpen))?;
 
-                    let mut while_node = Node::new(SyntaxElement::While, None, None, self.line, self.pos);
+                    let mut while_node =
+                        Node::new(SyntaxElement::While, None, None, self.line, self.pos);
                     self.parse_symbol_ext(Expression, &mut while_node, None, Some(NodeHint::Left))?;
 
                     self.try_symbol(TokenSym(ParClose))?;
                     self.try_symbol(TokenSym(CurlyOpen))?;
                     // start a new block with it's own symbol table and add it as a new entry to the current sym table
-                    let (while_block_table, block_name) = self.sym_table_current.deref().borrow_mut().add_block(Rc::downgrade(&self.sym_table_current))?;
+                    let (while_block_table, block_name) = self
+                        .sym_table_current
+                        .deref()
+                        .borrow_mut()
+                        .add_block(Rc::downgrade(&self.sym_table_current))?;
                     added_sym_names.push(block_name);
 
                     // enter that table
                     self.sym_table_current = while_block_table;
                     // do things inside the block
-                    self.parse_symbol_ext(StatementSequence, &mut while_node, None, Some(NodeHint::Right))?;
+                    self.parse_symbol_ext(
+                        StatementSequence,
+                        &mut while_node,
+                        None,
+                        Some(NodeHint::Right),
+                    )?;
                     self.try_symbol(TokenSym(CurlyClose))?;
 
-                    add_node_with_hint(current_node, while_node, node_additions, node_hint.expect("while needs a node hint"));
+                    add_node_with_hint(
+                        current_node,
+                        while_node,
+                        node_additions,
+                        node_hint.expect("while needs a node hint"),
+                    );
                     // leaving the block is unnecessary as that happens at the end of parse_symbol anyway
                     Ok(())
                 }
                 ReturnStatement => {
                     self.try_symbol(TokenSym(Return))?;
-                    let mut return_node = Node::new(SyntaxElement::Return, None, None, self.line, self.pos);
-                    if let Ok(()) = self.parse_symbol_ext(SimpleExpression, &mut return_node, None, Some(NodeHint::Right)) {}
+                    let mut return_node =
+                        Node::new(SyntaxElement::Return, None, None, self.line, self.pos);
+                    if let Ok(()) = self.parse_symbol_ext(
+                        SimpleExpression,
+                        &mut return_node,
+                        None,
+                        Some(NodeHint::Right),
+                    ) {}
                     self.try_symbol(TokenSym(Semicolon))?;
 
-                    add_node_with_hint(current_node, return_node, node_additions, node_hint.expect("return needs a node hint"));
+                    add_node_with_hint(
+                        current_node,
+                        return_node,
+                        node_additions,
+                        node_hint.expect("return needs a node hint"),
+                    );
                     Ok(())
                 }
                 ActualParameters => {
                     self.try_symbol(TokenSym(ParOpen))?;
-                    if let Ok(()) = self.parse_symbol_ext(Expression, current_node, None, node_hint) {
+                    if let Ok(()) = self.parse_symbol_ext(Expression, current_node, None, node_hint)
+                    {
                         // borrow the added expression node from the current node in order to be able to pass it on and add links to the following expressions
-                        let mut expr_node = borrow_node_with_hint(current_node, node_hint.expect("params need a hint")).unwrap();
+                        let mut expr_node = borrow_node_with_hint(
+                            current_node,
+                            node_hint.expect("params need a hint"),
+                        )
+                        .unwrap();
                         // find all following expressions
-                        while let Ok(()) = self.parse_sequence(&[TokenSym(Comma), Expression], expr_node, Some(NodeHint::Link)) {
+                        while let Ok(()) = self.parse_sequence(
+                            &[TokenSym(Comma), Expression],
+                            expr_node,
+                            Some(NodeHint::Link),
+                        ) {
                             expr_node = expr_node.borrow_link_mut().expect("expression was parsed as an argument, but not added as a link for some reason");
                         }
                         node_additions.mark_with_hint(node_hint.unwrap());
@@ -519,26 +670,43 @@ where
                 Expression => {
                     // first go with the assumption that this expression is no binary operation
                     self.parse_symbol_ext(SimpleExpression, current_node, None, node_hint.clone())?;
-                    let hint = node_hint.expect("expressions always need a hint where to add their nodes");
-                    if let Ok(symbol_found) = self.parse_symbols(&[
-                        TokenSym(EqualsEquals),
-                        TokenSym(Smaller),
-                        TokenSym(SmallerEqual),
-                        TokenSym(Larger),
-                        TokenSym(LargerEqual),
-                    ], current_node) {
+                    let hint =
+                        node_hint.expect("expressions always need a hint where to add their nodes");
+                    if let Ok(symbol_found) = self.parse_symbols(
+                        &[
+                            TokenSym(EqualsEquals),
+                            TokenSym(Smaller),
+                            TokenSym(SmallerEqual),
+                            TokenSym(Larger),
+                            TokenSym(LargerEqual),
+                        ],
+                        current_node,
+                    ) {
                         // now we know that it IS a binop, so we need to instead create a binop node and add the previous simple expression as its left child
-                        let mut binop_node = Node::new(SyntaxElement::Binop(match symbol_found {
-                            TokenSym(EqualsEquals) => { Binop::Equals },
-                            TokenSym(Smaller) => { Binop::Smaller },
-                            TokenSym(SmallerEqual) => { Binop::SmallerEqual },
-                            TokenSym(Larger) => { Binop::Larger },
-                            TokenSym(LargerEqual) => { Binop::LargerEqual },
-                            _ => panic!("parsed something different than a comparator for some reason")
-                        }), None, None, self.line, self.pos);
+                        let mut binop_node = Node::new(
+                            SyntaxElement::Binop(match symbol_found {
+                                TokenSym(EqualsEquals) => Binop::Equals,
+                                TokenSym(Smaller) => Binop::Smaller,
+                                TokenSym(SmallerEqual) => Binop::SmallerEqual,
+                                TokenSym(Larger) => Binop::Larger,
+                                TokenSym(LargerEqual) => Binop::LargerEqual,
+                                _ => panic!(
+                                    "parsed something different than a comparator for some reason"
+                                ),
+                            }),
+                            None,
+                            None,
+                            self.line,
+                            self.pos,
+                        );
                         let s_expr_node = take_node_with_hint(current_node, hint);
                         binop_node.set_left_boxed(s_expr_node.unwrap()); // s_expr_node should exist as the first assumption should have lead to it being added
-                        self.parse_symbol_ext(SimpleExpression, &mut binop_node, None, Some(NodeHint::Right))?;
+                        self.parse_symbol_ext(
+                            SimpleExpression,
+                            &mut binop_node,
+                            None,
+                            Some(NodeHint::Right),
+                        )?;
                         add_node_with_hint(current_node, binop_node, node_additions, hint);
                     }
                     Ok(())
@@ -546,9 +714,12 @@ where
                 SimpleExpression => unsafe {
                     // first go with the assumption that this simple expression is no binary operation
                     self.parse_symbol_ext(Term, current_node, None, node_hint.clone())?;
-                    let hint = node_hint.expect("simple expressions always need a hint where to add their nodes");
+                    let hint = node_hint
+                        .expect("simple expressions always need a hint where to add their nodes");
                     let mut binop_opt: Option<*mut Node> = None;
-                    while let Ok(symbol_found) = self.parse_symbols(&[TokenSym(Plus), TokenSym(Minus)], current_node) {
+                    while let Ok(symbol_found) =
+                        self.parse_symbols(&[TokenSym(Plus), TokenSym(Minus)], current_node)
+                    {
                         // now we know that it IS a binop, so we need to instead create a binop node and add the previous term as its left child
                         let binop_node = Node::new(SyntaxElement::Binop(match symbol_found {
                             TokenSym(Plus) => { Binop::Add },
@@ -560,26 +731,40 @@ where
                             let previous_binop = previous_binop_ptr.as_mut().unwrap();
                             let t_node = take_node_with_hint(previous_binop, NodeHint::Right);
                             previous_binop.set_right(Some(binop_node));
-                            (t_node, previous_binop.borrow_right_mut().unwrap() as *mut Node)
+                            (
+                                t_node,
+                                previous_binop.borrow_right_mut().unwrap() as *mut Node,
+                            )
                         } else {
                             let t_node = take_node_with_hint(current_node, hint);
                             add_node_with_hint(current_node, binop_node, node_additions, hint);
-                            (t_node, borrow_node_with_hint(current_node, hint).unwrap() as *mut Node)
+                            (
+                                t_node,
+                                borrow_node_with_hint(current_node, hint).unwrap() as *mut Node,
+                            )
                         };
                         (*binop_ptr).set_left_boxed(term_node.unwrap()); // term_node should exist as the first assumption should have lead to it being added
-                        // now assume that the following term is indeed the last one of this simple expression and therefore add it as the right child of the binop
-                        self.parse_symbol_ext(Term, &mut (*binop_ptr), None, Some(NodeHint::Right))?;
+                                                                         // now assume that the following term is indeed the last one of this simple expression and therefore add it as the right child of the binop
+                        self.parse_symbol_ext(
+                            Term,
+                            &mut (*binop_ptr),
+                            None,
+                            Some(NodeHint::Right),
+                        )?;
                         // but in case there is more, store the binop_node so that we might be able to take that right node away from it and make it the left node of the next binop
                         binop_opt = Some(binop_ptr);
                     }
                     Ok(())
-                }
+                },
                 Term => unsafe {
                     // first go with the assumption that this term is no binary operation
                     self.parse_symbol_ext(Factor, current_node, None, node_hint.clone())?;
-                    let hint = node_hint.expect("terms always need a hint where to add their nodes");
+                    let hint =
+                        node_hint.expect("terms always need a hint where to add their nodes");
                     let mut binop_opt: Option<*mut Node> = None;
-                    while let Ok(symbol_found) = self.parse_symbols(&[TokenSym(Times), TokenSym(Divide)], current_node) {
+                    while let Ok(symbol_found) =
+                        self.parse_symbols(&[TokenSym(Times), TokenSym(Divide)], current_node)
+                    {
                         // now we know that it IS a binop, so we need to instead create a binop node and add the previous factor as its left child
                         let binop_node = Node::new(SyntaxElement::Binop(match symbol_found {
                             TokenSym(Times) => { Binop::Mul },
@@ -591,31 +776,60 @@ where
                             let previous_binop = previous_binop_ptr.as_mut().unwrap();
                             let f_node = take_node_with_hint(previous_binop, NodeHint::Right);
                             previous_binop.set_right(Some(binop_node));
-                            (f_node, previous_binop.borrow_right_mut().unwrap() as *mut Node)
+                            (
+                                f_node,
+                                previous_binop.borrow_right_mut().unwrap() as *mut Node,
+                            )
                         } else {
                             let f_node = take_node_with_hint(current_node, hint);
                             add_node_with_hint(current_node, binop_node, node_additions, hint);
-                            (f_node, borrow_node_with_hint(current_node, hint).unwrap() as *mut Node)
+                            (
+                                f_node,
+                                borrow_node_with_hint(current_node, hint).unwrap() as *mut Node,
+                            )
                         };
                         (*binop_ptr).set_left_boxed(factor_node.unwrap()); // factor_node should exist as the first assumption should have lead to it being added
-                        // now assume that the following factor is indeed the last one of this term and therefore add it as the right child of the binop
-                        self.parse_symbol_ext(Factor, &mut (*binop_ptr), None, Some(NodeHint::Right))?;
+                                                                           // now assume that the following factor is indeed the last one of this term and therefore add it as the right child of the binop
+                        self.parse_symbol_ext(
+                            Factor,
+                            &mut (*binop_ptr),
+                            None,
+                            Some(NodeHint::Right),
+                        )?;
                         // but in case there is more, store the binop_node so that we might be able to take that right node away from it and make it the left node of the next binop
                         binop_opt = Some(binop_ptr);
                     }
                     Ok(())
-                }
+                },
                 Factor => {
-                    if let Ok(()) = self.parse_symbol_ext(InternProcedureCall, current_node, None, node_hint) {}
-                    else {
-                        let mut var_node = Node::new(SyntaxElement::Var, None, None, self.line, self.pos);
-                        if let Ok(()) = self.parse_symbol(TokenSym(dummy_ident.clone()), &mut var_node) {
-                            add_node_with_hint(current_node, var_node, node_additions, node_hint.expect("factors always need node hints"));
+                    if let Ok(()) =
+                        self.parse_symbol_ext(InternProcedureCall, current_node, None, node_hint)
+                    {
+                    } else {
+                        let mut var_node =
+                            Node::new(SyntaxElement::Var, None, None, self.line, self.pos);
+                        if let Ok(()) =
+                            self.parse_symbol(TokenSym(dummy_ident.clone()), &mut var_node)
+                        {
+                            add_node_with_hint(
+                                current_node,
+                                var_node,
+                                node_additions,
+                                node_hint.expect("factors always need node hints"),
+                            );
                         } else {
                             drop(var_node);
-                            let mut const_node = Node::new(SyntaxElement::Const, None, None, self.line, self.pos);
-                            if let Ok(()) = self.parse_symbol(TokenSym(dummy_number.clone()), &mut const_node) {
-                                add_node_with_hint(current_node, const_node, node_additions, node_hint.expect("factors always need node hints"));
+                            let mut const_node =
+                                Node::new(SyntaxElement::Const, None, None, self.line, self.pos);
+                            if let Ok(()) =
+                                self.parse_symbol(TokenSym(dummy_number.clone()), &mut const_node)
+                            {
+                                add_node_with_hint(
+                                    current_node,
+                                    const_node,
+                                    node_additions,
+                                    node_hint.expect("factors always need node hints"),
+                                );
                             } else {
                                 drop(const_node);
                                 self.try_symbol(TokenSym(ParOpen))?;
@@ -631,34 +845,60 @@ where
                         if d(&next_token.token) == d(&expected_token) {
                             match current_node.node_type() {
                                 SyntaxElement::Call => {
-                                    if let TWithPos { token: Token::Ident(s), .. } = next_token { // should always be true, due to the previous discriminant test
+                                    if let TWithPos {
+                                        token: Token::Ident(s),
+                                        ..
+                                    } = next_token
+                                    {
+                                        // should always be true, due to the previous discriminant test
                                         // find the matching call symbol in the symbol table
                                         //println!("searching for entry {}", s.as_str());
                                         //println!("symbol table {:?}", self.sym_table_current.deref());
-                                        let call_entry = self.sym_table_current.deref().borrow().get_entry(s.as_str());
+                                        let call_entry = self
+                                            .sym_table_current
+                                            .deref()
+                                            .borrow()
+                                            .get_entry(s.as_str());
                                         if let Some(entry) = call_entry {
                                             let sym_entry = entry.deref().borrow();
                                             let entry_type = sym_entry.entry_type();
-                                            if let EntryType::Proc(..) = entry_type {  // check if the entry is actually a procedure
+                                            if let EntryType::Proc(..) = entry_type {
+                                                // check if the entry is actually a procedure
                                                 drop(sym_entry);
                                                 current_node.set_obj(Some(entry));
                                             } else {
-                                                return Err(Box::new(TypeMismatch::new(s, "EntryType::Proc".to_string() ,d(entry_type))));
+                                                return Err(Box::new(TypeMismatch::new(
+                                                    s,
+                                                    "EntryType::Proc".to_string(),
+                                                    d(entry_type),
+                                                )));
                                             };
                                         } else {
                                             // don't throw an error and instead just assume that the method will get defined later
-                                            let unresolved_entry = EntryType::Unresolved(Rc::downgrade(&self.sym_table_current));
-                                            current_node.set_obj(Some(Rc::new(RefCell::new(SymEntry::new(s, unresolved_entry)))))
+                                            let unresolved_entry = EntryType::Unresolved(
+                                                Rc::downgrade(&self.sym_table_current),
+                                            );
+                                            current_node.set_obj(Some(Rc::new(RefCell::new(
+                                                SymEntry::new(s, unresolved_entry),
+                                            ))))
                                             //return Err(Box::new(UndefinedSymbol::new(s)));    // old behavior: throw an error
                                         }
                                     }
                                 }
                                 SyntaxElement::Var => {
-                                    if let TWithPos { token: Token::Ident(s), .. } = next_token {
+                                    if let TWithPos {
+                                        token: Token::Ident(s),
+                                        ..
+                                    } = next_token
+                                    {
                                         // find the matching var symbol in the symbol table
                                         //println!("searching for entry {}", s.as_str());
                                         //println!("symbol table {:?}", self.sym_table_current.deref());
-                                        let var_entry = self.sym_table_current.deref().borrow().get_entry(s.as_str());
+                                        let var_entry = self
+                                            .sym_table_current
+                                            .deref()
+                                            .borrow()
+                                            .get_entry(s.as_str());
                                         if let Some(entry) = var_entry {
                                             // check if it's a constant
                                             {
@@ -666,11 +906,17 @@ where
                                                 let entry_type = sym_entry.entry_type();
                                                 match entry_type {
                                                     EntryType::Const(value) => {
-                                                        current_node.set_return_val(Some(*value));  // and set the return value to the const value if true
-                                                    },
-                                                    EntryType::Var(_) => {},
+                                                        current_node.set_return_val(Some(*value));
+                                                        // and set the return value to the const value if true
+                                                    }
+                                                    EntryType::Var(_) => {}
                                                     other_type => {
-                                                        return Err(Box::new(TypeMismatch::new(s, "EntryType::Val or EntryType::Const".to_string(), d(other_type))));
+                                                        return Err(Box::new(TypeMismatch::new(
+                                                            s,
+                                                            "EntryType::Val or EntryType::Const"
+                                                                .to_string(),
+                                                            d(other_type),
+                                                        )));
                                                     }
                                                 }
                                             }
@@ -681,9 +927,15 @@ where
                                     }
                                 }
                                 SyntaxElement::Const => {
-                                    if let TWithPos { token: Token::Number(i), .. } = next_token {
+                                    if let TWithPos {
+                                        token: Token::Number(i),
+                                        ..
+                                    } = next_token
+                                    {
                                         current_node.set_return_val(Some(sym_table::Type::Int(i)));
-                                    } else { panic!("token has wrong type for const") } // should never happen, but I keep it here in case more types get added
+                                    } else {
+                                        panic!("token has wrong type for const")
+                                    } // should never happen, but I keep it here in case more types get added
                                 }
                                 _ => {}
                             }
@@ -707,29 +959,45 @@ where
         match p_res {
             Ok(()) => {
                 // check if you now were able to parse more of the text successfully than up until now
-                if self.line > self.best_line || (self.line == self.best_line && self.pos > self.best_pos) {
+                if self.line > self.best_line
+                    || (self.line == self.best_line && self.pos > self.best_pos)
+                {
                     // yes, ok then make that the new best
                     self.best_line = self.line;
                     self.best_pos = self.pos;
                 }
                 Ok(())
-            },
+            }
             Err(e) => {
                 // reset the index so we can try again with another symbol
                 self.token_buffer.next_index = index_before;
                 // remove all sym table entries added in the effort of parsing this symbol
                 for name in added_sym_names {
-                    self.sym_table_current.deref().borrow_mut().remove_entry(name.as_str());
+                    self.sym_table_current
+                        .deref()
+                        .borrow_mut()
+                        .remove_entry(name.as_str());
                 }
                 // remove all new nodes that were added to the current node
-                if node_additions.left  { current_node.set_left(None); }
-                if node_additions.right { current_node.set_right(None); }
-                if node_additions.link  { current_node.set_link(None); }
+                if node_additions.left {
+                    current_node.set_left(None);
+                }
+                if node_additions.right {
+                    current_node.set_right(None);
+                }
+                if node_additions.link {
+                    current_node.set_link(None);
+                }
 
                 // check if you read further than ever before before encountering this error
                 // if you did than this error is the new "best error"
-                if self.line > self.best_line || (self.line == self.best_line && self.pos > self.best_pos) {
-                    self.best_error = Some(Box::new(SymbolError::new_with_cause(symbol.clone(), e.clone())));
+                if self.line > self.best_line
+                    || (self.line == self.best_line && self.pos > self.best_pos)
+                {
+                    self.best_error = Some(Box::new(SymbolError::new_with_cause(
+                        symbol.clone(),
+                        e.clone(),
+                    )));
                 }
 
                 Err(Box::new(SymbolError::new_with_cause(symbol, e)))
@@ -757,7 +1025,12 @@ where
 
     /// Try interpreting the token stream as one of the symbols. Try one after another.
     /// Stop as soon as you find the matching symbol.
-    fn parse_symbols_ext(&mut self, expected_symbols: &[Symbol], current_node: &mut Node, node_hint: Option<NodeHint>) -> ParseMultiResult {
+    fn parse_symbols_ext(
+        &mut self,
+        expected_symbols: &[Symbol],
+        current_node: &mut Node,
+        node_hint: Option<NodeHint>,
+    ) -> ParseMultiResult {
         for sym in expected_symbols {
             if let Ok(()) = self.parse_symbol_ext((*sym).clone(), current_node, None, node_hint) {
                 return Ok((*sym).clone());
@@ -770,7 +1043,11 @@ where
 
     /// Try interpreting the token stream as one of the symbols. Try one after another.
     /// Stop as soon as you find the matching symbol.
-    fn parse_symbols(&mut self, expected_symbols: &[Symbol], current_node: &mut Node) -> ParseMultiResult {
+    fn parse_symbols(
+        &mut self,
+        expected_symbols: &[Symbol],
+        current_node: &mut Node,
+    ) -> ParseMultiResult {
         self.parse_symbols_ext(expected_symbols, current_node, None)
     }
 
@@ -787,12 +1064,22 @@ where
         Ok(())
     }
 
-    fn parse_sequence(&mut self, expected_sequence: &[Symbol], current_node: &mut Node, node_hint: Option<NodeHint>) -> ParseResult {
+    fn parse_sequence(
+        &mut self,
+        expected_sequence: &[Symbol],
+        current_node: &mut Node,
+        node_hint: Option<NodeHint>,
+    ) -> ParseResult {
         let index_before = self.token_buffer.next_index;
         let mut added_sym_names = Vec::new();
         for sym in expected_sequence {
-            if let Err(e) = self.parse_symbol_ext((*sym).clone(), current_node, Some(&mut added_sym_names), node_hint) {
-                self.token_buffer.next_index = index_before;    // restart reading from the token buffer at the previous position
+            if let Err(e) = self.parse_symbol_ext(
+                (*sym).clone(),
+                current_node,
+                Some(&mut added_sym_names),
+                node_hint,
+            ) {
+                self.token_buffer.next_index = index_before; // restart reading from the token buffer at the previous position
                 return Err(e);
             }
         }
@@ -1040,10 +1327,19 @@ where
         let params = self.parse_formal_parameters()?;
         // add the params to the method sym table
         for (t, name) in params.iter() {
-            method_sym_table.deref().borrow_mut().add_entry(Rc::new(RefCell::new(SymEntry::new(name.clone(), EntryType::Var(*t)))))?;
+            method_sym_table
+                .deref()
+                .borrow_mut()
+                .add_entry(Rc::new(RefCell::new(SymEntry::new(
+                    name.clone(),
+                    EntryType::Var(*t),
+                ))))?;
         }
 
-        let method_sym_entry = Rc::new(RefCell::new(SymEntry::new(name, EntryType::Proc(method_sym_table, params, m_type))));
+        let method_sym_entry = Rc::new(RefCell::new(SymEntry::new(
+            name,
+            EntryType::Proc(method_sym_table, params, m_type),
+        )));
 
         Ok(method_sym_entry)
     }
@@ -1082,10 +1378,7 @@ where
             }
             _ => {
                 self.token_buffer.next_index = i_before;
-                Err(Box::new(WrongToken::new(
-                    t_w_pos,
-                    vec![Token::Int],
-                )))
+                Err(Box::new(WrongToken::new(t_w_pos, vec![Token::Int])))
             }
         }
     }
@@ -1109,14 +1402,11 @@ where
         let t_w_pos = self.next_token()?;
         match t_w_pos.token {
             Token::Int => {
-                return Ok(Type::Int(0));    // 0 is just a placeholder
+                return Ok(Type::Int(0)); // 0 is just a placeholder
             }
             _ => {
                 self.token_buffer.next_index = i_before;
-                Err(Box::new(WrongToken::new(
-                    t_w_pos,
-                    vec![Token::Int],
-                )))
+                Err(Box::new(WrongToken::new(t_w_pos, vec![Token::Int])))
             }
         }
     }
@@ -1130,7 +1420,11 @@ where
         self.sym_table_current = Rc::new(RefCell::new(SymTable::new(Some(weak_enclose))));
     }
 
-    fn add_sym_table_entry(&mut self, entry: Rc<RefCell<SymEntry>>, added_sym_names: &mut Vec<String>) -> Result<(), Box<dyn ParseError>> {
+    fn add_sym_table_entry(
+        &mut self,
+        entry: Rc<RefCell<SymEntry>>,
+        added_sym_names: &mut Vec<String>,
+    ) -> Result<(), Box<dyn ParseError>> {
         added_sym_names.push(entry.deref().borrow().name().to_string());
         self.sym_table_current.deref().borrow_mut().add_entry(entry)
     }
@@ -1155,27 +1449,38 @@ fn add_node_link(current_node: &mut Node, link: Node, node_additions: &mut NodeA
     node_additions.link = true;
 }
 
-fn add_node_with_hint(current_node: &mut Node, new_node: Node, node_additions: &mut NodeAdditions, hint: NodeHint) {
+fn add_node_with_hint(
+    current_node: &mut Node,
+    new_node: Node,
+    node_additions: &mut NodeAdditions,
+    hint: NodeHint,
+) {
     match hint {
-        NodeHint::Left => { add_node_left(current_node, new_node, node_additions); }
-        NodeHint::Right => { add_node_right(current_node, new_node, node_additions); }
-        NodeHint::Link => { add_node_link(current_node, new_node, node_additions); }
+        NodeHint::Left => {
+            add_node_left(current_node, new_node, node_additions);
+        }
+        NodeHint::Right => {
+            add_node_right(current_node, new_node, node_additions);
+        }
+        NodeHint::Link => {
+            add_node_link(current_node, new_node, node_additions);
+        }
     }
 }
 
 fn take_node_with_hint(node: &mut Node, hint: NodeHint) -> Option<Box<Node>> {
     match hint {
-        NodeHint::Left => { node.take_left() }
-        NodeHint::Right => { node.take_right() }
-        NodeHint::Link => { node.take_link() }
+        NodeHint::Left => node.take_left(),
+        NodeHint::Right => node.take_right(),
+        NodeHint::Link => node.take_link(),
     }
 }
 
 fn borrow_node_with_hint(node: &mut Node, hint: NodeHint) -> Option<&mut Node> {
     match hint {
-        NodeHint::Left => { node.borrow_left_mut() }
-        NodeHint::Right => { node.borrow_right_mut() }
-        NodeHint::Link => { node.borrow_link_mut() }
+        NodeHint::Left => node.borrow_left_mut(),
+        NodeHint::Right => node.borrow_right_mut(),
+        NodeHint::Link => node.borrow_link_mut(),
     }
 }
 
@@ -1190,15 +1495,21 @@ impl NodeAdditions {
         Self {
             left: false,
             right: false,
-            link: false
+            link: false,
         }
     }
 
     pub fn mark_with_hint(&mut self, node_hint: NodeHint) {
         match node_hint {
-            NodeHint::Left => { self.left = true; }
-            NodeHint::Right => { self.right = true; }
-            NodeHint::Link => { self.link = true; }
+            NodeHint::Left => {
+                self.left = true;
+            }
+            NodeHint::Right => {
+                self.right = true;
+            }
+            NodeHint::Link => {
+                self.link = true;
+            }
         }
     }
 }
