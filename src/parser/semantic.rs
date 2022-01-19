@@ -147,7 +147,7 @@ pub fn compatible_op_type(node: &Node) -> Result<Type, Box<dyn ParseError>> {
             }
             else { return Err(Box::new(IncompatibleTypes::new(left_type, right_type, node.line(), node.pos()))); }
         }
-        SyntaxElement::Binop(_) => {
+        SyntaxElement::Binop(op) => {
             // get the left type
             let left_type = compatible_op_type(node.borrow_left().unwrap())?;
             // get the right type
@@ -156,7 +156,7 @@ pub fn compatible_op_type(node: &Node) -> Result<Type, Box<dyn ParseError>> {
             if d(&left_type) == d(&right_type) {
                 // check whether the type of the operands is actually what the operator asked for (i.e. an int at this point)
                 return if let Type::Int(_) = left_type {
-                    Ok(left_type)
+                    Ok(op.value_type())
                 } else {
                     Err(Box::new(WrongOperandType::new(node.line(), node.pos(), left_type, node.node_type())))
                 };
@@ -209,15 +209,13 @@ pub fn check_return(node: &Node) -> CheckResult {
     let proc_entry: Ref<SymEntry> = node.get_obj().as_ref().expect("call has no sym table entry").as_ref().borrow();
     let return_type = proc_entry.result_type().expect("procedure has no return type");
 
-    // if the return type is `void` then just return Ok, as performing an analysis on whether this function
-    // actually ever returns is the definition of solving the halting problem
-    if let ResultType::Void = return_type { return Ok(()); }
-    // so from now on we don't have to cover the void case anymore
-    let return_type = return_type.to_type().unwrap();
+    // cast the ResultType to Option<Type> to allow for easier comparing
+    // reminder: None means ResultType is void in this case
+    let ret_type = return_type.to_type();
 
     /// go through all statements in this sequence until you either find a `return`,
     /// or a branch (if-else, in which case you recursively check both paths for a return of the ret_type)
-    fn check_execution_path(start_node: &Node, ret_type: Type) -> bool {
+    fn check_execution_path(start_node: &Node, ret_type: Option<Type>) -> bool {
         let mut c_node = Some(start_node);
         while let Some(current_node) = c_node {
             match current_node.node_type() {
@@ -242,34 +240,41 @@ pub fn check_return(node: &Node) -> CheckResult {
                     // you've hit a `return`! check whether it's of the right type, by getting the type of its right child (if there is one)
                     let ret_value = current_node.borrow_right();
                     if let Some(value_node) = ret_value {
-                        match value_node.node_type() {
-                            SyntaxElement::Call | SyntaxElement::Var | SyntaxElement::Const => {
-                                if d(&value_node.value_type().unwrap()) == d(&ret_type) {
-                                    return true;
+                        if let Some(r_type) = ret_type {
+                            match value_node.node_type() {
+                                SyntaxElement::Call | SyntaxElement::Var | SyntaxElement::Const => {
+                                    if d(&value_node.value_type().unwrap()) == d(&r_type) {
+                                        return true;
+                                    }
                                 }
-                            }
-                            SyntaxElement::Binop(op) => {
-                                if d(&op.value_type()) == d(&ret_type) {
-                                    return true;
+                                SyntaxElement::Binop(op) => {
+                                    if d(&op.value_type()) == d(&r_type) {
+                                        return true;
+                                    }
                                 }
+                                _ => panic!("nonsensical node after return")
                             }
-                            _ => panic!("nonsensical node after return")
+                        } else {
+                            // if it IS void and a return value is found the return is incorrect
+                            return false;
                         }
                     }
-                    // if execution proceeds to here, then the return had the wrong type or no type at all (void), which we excluded already
-                    return false;
+                    // if execution proceeds to here, then the return has no value, so we only need to check whether void was actually asked for
+                    return ret_type.is_none();
                 }
                 _ => panic!("a node of a wrong type ({:?}) is part of this function", current_node.node_type())
             }
             // proceed onto the next statement
             c_node = current_node.borrow_link();
         }
-        false
+        // if the code proceeds to here then no return was found
+        // that's ok for void, but not for anything else, so we return whether void was actually asked for
+        ret_type.is_none()
     }
 
     // check on the right child (the first statement), which can be unwrapped, as the language
     // specification states that there always needs to be at least one statement in a function
-    if check_execution_path(node.borrow_right().unwrap(), return_type) {
+    if check_execution_path(node.borrow_right().unwrap(), ret_type) {
         Ok(())
     } else {
         Err(Box::new(WrongReturnType::new(node.line(), node.pos(), return_type)))

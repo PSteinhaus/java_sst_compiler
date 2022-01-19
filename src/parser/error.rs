@@ -1,6 +1,6 @@
 use crate::input::{CPos, LNum};
 use crate::parser::ast::SyntaxElement;
-use crate::parser::sym_table::{EntryType, Type};
+use crate::parser::sym_table::{EntryType, ResultType, Type};
 use crate::parser::Symbol;
 use crate::scanner::{TWithPos, Token};
 use dyn_clone::{clone_trait_object, DynClone};
@@ -308,11 +308,11 @@ impl Display for WrongOperandType {
 pub struct WrongReturnType {
     line: LNum,
     pos: CPos,
-    desired_type: Type,
+    desired_type: ResultType,
 }
 
 impl WrongReturnType {
-    pub fn new(line: LNum, pos: CPos, desired_type: Type) -> Self {
+    pub fn new(line: LNum, pos: CPos, desired_type: ResultType) -> Self {
         Self {
             line,
             pos,
