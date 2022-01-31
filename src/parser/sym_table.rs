@@ -1,5 +1,7 @@
 use std::cell::RefCell;
+use std::collections::hash_map::Iter;
 use std::collections::HashMap;
+use std::iter::Filter;
 use std::rc::{Rc, Weak};
 use crate::parser::error::{DoubleDeclaration, ParseError};
 use crate::parser::sym_table::Type::Int;
@@ -80,12 +82,30 @@ impl SymTable {
         }
         v_entries
     }
+
+    /// Returns the names and types of all variables (including final variables, i.e. constants) in this table.
+    pub fn var_names_with_type(&self) -> Vec<(String,Type)> {
+        let mut v_entries = vec![];
+        for e in self.entries.iter() {
+            match e.1.borrow().entry_type {
+                EntryType::Var(t) | EntryType::Const(t) => { v_entries.push(((*e.0).clone(), t)) }
+                _ => {}
+            }
+        }
+        v_entries
+    }
+
+    /// Returns all procedures in this table.
+    pub fn procedures(&self) -> Filter<Iter<'_, String, Rc<RefCell<SymEntry>>>, fn(&(&'_ String, &'_ Rc<RefCell<SymEntry>>)) -> bool> {
+        self.entries.iter().filter(|e| { if let EntryType::Proc(_, _, _) = e.1.borrow().entry_type { return true; } return false; } )
+    }
 }
 
 #[derive(Debug)]
 pub enum EntryType {
     Class(Rc<RefCell<SymTable>>),
     Var(Type),
+    /// A constant variable, but not a literal itself
     Const(Type),
     Proc(Rc<RefCell<SymTable>>, Vec<(Type, String)>, ResultType),
     Block(Rc<RefCell<SymTable>>),

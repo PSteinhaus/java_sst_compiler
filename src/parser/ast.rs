@@ -6,15 +6,14 @@ use std::cell::RefCell;
 use std::ops::Deref;
 use std::rc::Rc;
 
-// TODO: create function that returns syntax tree in DOT format
-
 pub struct Node {
     left: Option<Box<Node>>,
     right: Option<Box<Node>>,
     link: Option<Box<Node>>,
 
     node_type: SyntaxElement,
-
+    /// holding the actual value that the corresponding object specifies;
+    /// it can only be depended on that this is set for pure literals;
     return_val: Option<Type>,
     obj: Option<Rc<RefCell<SymEntry>>>,
 

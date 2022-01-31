@@ -6,6 +6,7 @@ mod ast;
 mod error;
 pub mod semantic;
 mod sym_table;
+pub mod bytecode;
 
 use crate::input::{CPos, LNum};
 use crate::parser::ast::{Binop, Node, SyntaxElement};

@@ -1,11 +1,10 @@
 //! functionality for checking the semantic of an AST with a corresponding symbol table
 
-use std::borrow::Borrow;
 use std::cell::Ref;
 use std::collections::HashSet;
 use crate::parser::ast::{Node, SyntaxElement};
 use crate::parser::error::{ArgumentMismatch, CheckResult, IncompatibleTypes, ParseError, UninitializedVar, VoidOperand, WrongOperandType, WrongReturnType};
-use crate::parser::sym_table::{ResultType, SymEntry, Type};
+use crate::parser::sym_table::{SymEntry, Type};
 use std::mem::discriminant as d;
 
 pub fn check(node: &Node) -> CheckResult {
