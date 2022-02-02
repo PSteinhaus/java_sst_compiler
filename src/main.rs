@@ -18,14 +18,14 @@ fn main() {
     let scanner = Scanner::new(input);
     let parser = Parser::new(scanner);
     match parser.parse() {
-        Ok((sym_table, ast)) => {
+        Ok((_sym_table, ast)) => {
             println!("{}", ast.dot_representation());
             let result = crate::parser::semantic::check(&ast);
             if let Err(e) = result {
                 panic!("{}", e.to_string());
             }
             // generate the bytecode!
-            crate::parser::bytecode::generate(&ast, &sym_table.as_ref().borrow()).expect("couldn't create the bytecode");
+            crate::parser::bytecode::generate(&ast).expect("couldn't create the bytecode");
         }
         Err(e) => panic!("{}", e.to_string()),
     }

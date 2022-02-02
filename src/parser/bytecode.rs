@@ -1,7 +1,5 @@
 //! code for generating JVM-bytecode out of an AST and a symbol table for a JavaSST class
 
-use std::borrow::Borrow;
-use std::cell::{Ref, RefCell};
 use std::cmp::max;
 use std::collections::HashMap;
 use std::fs::File;
@@ -13,8 +11,8 @@ use crate::parser::bytecode::CPoolEntry::CONSTANT_Utf8;
 use crate::parser::error::ParseResult;
 use crate::parser::sym_table::{ResultType, SymEntry, SymTable, Type};
 
-/// takes an AST and a symbol table belonging to it and creates JVM-bytecode from it for the given class
-pub fn generate(ast: &Node, table: &SymTable) -> ParseResult {
+/// takes an AST and creates JVM-bytecode from it for the given class
+pub fn generate(ast: &Node) -> ParseResult {
     // get the name of the class, as we need it in the bytecode and later to name the file
     let class_entry = ast.get_obj().as_ref().expect("starting class node without obj").deref().borrow();
     let class_name = class_entry.name();
@@ -171,7 +169,7 @@ fn write_methods(bytecode: &mut Vec<u8>, table: &SymTable, constant_pool: &Const
     bytecode.extend_from_slice(&0u16.to_be_bytes());
     */
 }
-
+/*
 /// generates a StackMapFrame (https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.7.4) for the given method
 fn add_stack_map_frame(code_attr_buffer: &mut Vec<u8>, constant_pool: &ConstantPool, method_bytecode: &[u8]) {
     /*
@@ -199,7 +197,7 @@ fn add_stack_map_frame(code_attr_buffer: &mut Vec<u8>, constant_pool: &ConstantP
     // TODO: number_of_entries
     todo!()
 }
-
+*/
 /// generates the actual bytecode for a method (or parts of it, recursively)
 fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool, sym_table: &SymTable, params: &[(Type, String)]) -> Vec<u8> {
     use ByteInstruction::*;
@@ -243,7 +241,7 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
                 let var_name = var_entry.name();
                 // with that we can first decide whether its a class variable or an argument, or a local one
                 // first check the params
-                if let Some((param_index, param)) = params.iter().enumerate().find(|(i, type_and_name)| (*type_and_name).1.as_str() == var_name) {
+                if let Some((param_index, _param)) = params.iter().enumerate().find(|(_i, type_and_name)| (*type_and_name).1.as_str() == var_name) {
                     // it is a param, store to the place specified by the index
                     // write the opcode and the index into the local variables
                     bytecode.push(istore as u8);
@@ -251,7 +249,7 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
                 }
                 else if let Some((i, _name)) = sym_table.var_names().iter()
                     .filter(|name| params.iter().find(|(_t, p_name)| p_name.as_str() == name.as_str()).is_none())    // filter out params
-                    .enumerate().find(|(i, name)| var_name == (*name).as_str() ) {     // then enumerate the rest to give them an order
+                    .enumerate().find(|(_i, name)| var_name == (*name).as_str() ) {     // then enumerate the rest to give them an order
                     // it's a local one
                     // use the index + the number of params as an index into the local variables
                     let local_index = (i + params.len()) as u8;
@@ -274,7 +272,7 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
                 let var_name = var_entry.name();
                 // with that we can first decide whether its a class variable or an argument, or a local one
                 // first check the params
-                if let Some((param_index, param)) = params.iter().enumerate().find(|(i, type_and_name)| (*type_and_name).1.as_str() == var_name) {
+                if let Some((param_index, _param)) = params.iter().enumerate().find(|(_i, type_and_name)| (*type_and_name).1.as_str() == var_name) {
                     // it is a param, so load it from the place specified by the index
                     // write the opcode and the index into the local variables
                     bytecode.push(iload as u8);
@@ -282,7 +280,7 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
                 }
                 else if let Some((i, _name)) = sym_table.var_names().iter()
                     .filter(|name| params.iter().find(|(_t, p_name)| p_name.as_str() == name.as_str()).is_none())    // filter out params
-                    .enumerate().find(|(i, name)| var_name == (*name).as_str() ) {     // then enumerate the rest to give them an order
+                    .enumerate().find(|(_i, name)| var_name == (*name).as_str() ) {     // then enumerate the rest to give them an order
                     // it's a local one
                     // use the index + the number of params as an index into the local variables
                     let local_index = (i + params.len()) as u8;
@@ -419,8 +417,6 @@ enum ByteInstruction {
     iload = 0x15,
     /// remove integer from top of stack and put it into the local variable store at the given index (one byte index)
     istore = 0x36,
-    /// duplicate the top of the stack
-    dup = 0x59,
     /// add the two ints on top of the stack and push the result onto it
     iadd = 0x60,
     /// get value1 and then value2 from the stack and push value1 - value2 onto it
