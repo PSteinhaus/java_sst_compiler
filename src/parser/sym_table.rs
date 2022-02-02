@@ -155,7 +155,7 @@ impl SymEntry {
     pub fn entry_type(&self) -> &EntryType {
         &self.entry_type
     }
-
+/*
     /// Returns the integer value iff this entry is a variable or a constant.
     pub fn int_value(&self) -> Option<SSTint> {
         match self.entry_type {
@@ -163,7 +163,7 @@ impl SymEntry {
             _ => None,
         }
     }
-
+*/
     /// Returns a symbol table defining the parameters iff this entry is a procedure.
     pub fn params(&self) -> Option<&[(Type, String)]> {
         if let EntryType::Proc(_, p_list, _) = &self.entry_type {

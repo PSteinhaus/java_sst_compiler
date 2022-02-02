@@ -27,6 +27,9 @@ class Test {
 				m3 = m3 - 1;
 			}
 
+			dyn3 = m3;
+			dyn2 = var3;
+
 			if (m3 >= 5) {
 				return;
 			} else {
@@ -40,8 +43,16 @@ class Test {
 
 		return;
 	}
+/*
+	public int meth3(int var0, int var1) {
+	    return meth2(dummy(var0,var0,var0), dummy(dummy(var1, var1, var1),dummy(var1, var1, var1),dummy(var1, var1, var1)));
+	}
+*/
+	public int dummy(int var0, int var1, int var2) {
+        return var0 + var1 + var2;
+    }
 
 	public int meth2(int m, int n) {
-            return m * n + (m/n);
-        }
+        return (m + (3 + 5)) * n + (m/n);
+    }
 }
