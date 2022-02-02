@@ -2,8 +2,8 @@
 
 This repository holds a small compiler for a tiny, educational, Java-like language called JavaSST.
 
-It reads in source files and compiles them down to Java bytecode.
+It reads in source files and compiles them down to Java bytecode (version 49.0).
 
-## Status
+Additionally, the abstract syntax tree (AST) that the code generation is based on can be displayed when the program
+is called with the `--dot-rep` flag:
 
-The project is currently in its first steps and will probably be a WIP until the end of February.

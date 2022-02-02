@@ -121,8 +121,8 @@ fn write_methods(bytecode: &mut Vec<u8>, table: &SymTable, constant_pool: &Const
         let enter_node = enter_option.unwrap();
 
         // max_stack
-        let max_stack = max_stack(Some(enter_node)); // MAGIC: add 1, as the stack size needs to be one higher according to a tested jdk for some reason...
-        println!("MAX_STACK: {}", max_stack);
+        let max_stack = max_stack(Some(enter_node));
+        //println!("MAX_STACK: {}", max_stack); DEBUG
         attr_buffer.extend_from_slice(&max_stack.to_be_bytes());
         // max_locals
         let max_locals = max_locals(enter_node);
