@@ -120,19 +120,22 @@ fn write_methods(bytecode: &mut Vec<u8>, table: &SymTable, constant_pool: &Const
         }
         let enter_node = enter_option.unwrap();
 
+        // for the code itself again generate a new buffer for the same reasons as with the attribute
+        let mut current_stack = 0;
+        let mut max_stack = 0;
+        let code_buffer = method_bytecode(enter_node.borrow_right(),
+                                          constant_pool,
+                                          &sym_entry.sym_table().unwrap().deref().borrow(),
+                                          sym_entry.params().unwrap(),
+                                          &mut current_stack,
+                                          &mut max_stack,
+                                 true
+        );
         // max_stack
-        let max_stack = max_stack(Some(enter_node));
-        //println!("MAX_STACK: {}", max_stack); DEBUG
         attr_buffer.extend_from_slice(&max_stack.to_be_bytes());
         // max_locals
         let max_locals = max_locals(enter_node);
         attr_buffer.extend_from_slice(&max_locals.to_be_bytes());
-        // for the code itself again generate a new buffer for the same reasons as with the attribute
-        let code_buffer = method_bytecode(enter_node.borrow_right(),
-                                          constant_pool,
-                                          &sym_entry.sym_table().unwrap().deref().borrow(),
-                                          sym_entry.params().unwrap()
-        );
         // code_length
         attr_buffer.extend_from_slice(&(code_buffer.len() as u32).to_be_bytes());
         // code
@@ -142,8 +145,8 @@ fn write_methods(bytecode: &mut Vec<u8>, table: &SymTable, constant_pool: &Const
         // #######################
         // # CODE ATTRIBUTE INFO #
         // #######################
-        // attributes_count (one, as LineNumberTables are optional and therefore currently not implemented,
-        // but StackMapFrames aren't (since Java 7, which is the oldest version still supported by current compilers, so we need to implement them as well...))
+        // attributes_count (zero, as LineNumberTables are optional and therefore currently not implemented,
+        // and StackMapFrames aren't (since Java 7, which is the oldest version still supported by current compilers), but if we stick to older compilers we can just skip it for now as well)
         attr_buffer.extend_from_slice(&0u16.to_be_bytes());
         // code attribute (StackMapFrame)
         //add_stack_map_frame(&mut attr_buffer);
@@ -154,52 +157,18 @@ fn write_methods(bytecode: &mut Vec<u8>, table: &SymTable, constant_pool: &Const
         // attribute
         bytecode.extend_from_slice(attr_buffer.as_slice());
     }
-    /*
-    // add abstract class initialization
-    // access_flags
-    bytecode.extend_from_slice(b"\x00\x09");    // static (0x0008) and public (0x0001)
-    // name_index
-    let name_index = *constant_pool.get_index(&CPoolEntry::CONSTANT_Utf8("<clinit>".to_string())).unwrap();
-    bytecode.extend_from_slice(&name_index.to_be_bytes());
-    // descriptor_index
-    let descriptor_index = *constant_pool.get_index(&CPoolEntry::CONSTANT_Utf8("()V".to_string())).unwrap();
-    bytecode.extend_from_slice(&descriptor_index.to_be_bytes());
-    // attributes_count
-    // There are no attributes, as the method is abstract
-    bytecode.extend_from_slice(&0u16.to_be_bytes());
-    */
 }
-/*
-/// generates a StackMapFrame (https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.7.4) for the given method
-fn add_stack_map_frame(code_attr_buffer: &mut Vec<u8>, constant_pool: &ConstantPool, method_bytecode: &[u8]) {
-    /*
-    StackMapTable_attribute {
-        u2              attribute_name_index;
-        u4              attribute_length;
-        u2              number_of_entries;
-        stack_map_frame entries[number_of_entries];
-    }
-    */
-    let attribute_name_index = *constant_pool.get_index(&CPoolEntry::CONSTANT_Utf8("StackMapFrame".to_string())).unwrap();
-    code_attr_buffer.extend_from_slice(&attribute_name_index.to_be_bytes());
-    // the number of entries and attribute length can of course only be known after the next step, which is the generation of all stack_map_frames
-    // a stack_map_frame can, in theory, be a number of different things, to allow for better optimization, but for us here it will just always be a same_frame
-    // it can be just a same_frame, as all jump targets should be places where the operand stack is currently empty
-    /*
-    same_frame {
-        u1 frame_type = SAME; /* 0-63 */    // the actual offset_delta used is then given by: 64 - frame_type
-    }
-    */
-    // # Note of resignation #: implementing this would require changing method_bytecode again, which I'm just not in the mood in for, so this may actually never be implemented
 
-    // TODO: attribute_length
-
-    // TODO: number_of_entries
-    todo!()
-}
-*/
 /// generates the actual bytecode for a method (or parts of it, recursively)
-fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool, sym_table: &SymTable, params: &[(Type, String)]) -> Vec<u8> {
+fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool, sym_table: &SymTable, params: &[(Type, String)], current_stack: &mut u16, max_stack: &mut u16, follow_link: bool) -> Vec<u8> {
+    fn increase_stack(current_stack: &mut u16, max_stack: &mut u16) {
+        *current_stack += 1;
+        *max_stack = max(*current_stack, *max_stack);
+    }
+    fn decrease_stack(current_stack: &mut u16) {
+        *current_stack -= 1;
+    }
+
     use ByteInstruction::*;
     let mut bytecode = Vec::<u8>::new();
 
@@ -207,22 +176,16 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
         match node.node_type() {
             SyntaxElement::Call => {
                 let method_rc = node.get_obj().as_ref().unwrap();
-                // first lay all necessary parameters on the stack, in inverted order (so that they're in normal order when popped)
-                // for that go into the left child (i.e. the first argument) and walk to the last argument and then the second last and so on
-                let argument_count = method_rc.deref().borrow().params().unwrap().len();
-                for i in 0..argument_count {
-                    let target_index = argument_count - i;
-                    let mut arg_index = 1;
-                    let mut arg_option = node.borrow_left();
-                    while let Some(arg_node) = arg_option {
-                        if arg_index == target_index {
-                            // execute the node, so that the necessary argument afterwards lies on the stack
-                            bytecode.extend_from_slice(method_bytecode(arg_option, constant_pool, sym_table, params).as_slice());
-                            break;
-                        }
-                        arg_index += 1;
-                        arg_option = arg_node.borrow_link();
-                    }
+                let method_entry = method_rc.deref().borrow();
+                // first lay all necessary parameters on the stack, in normal order, not inverted one
+                let argument_count = method_entry.params().unwrap().len();
+                let mut arg_option = node.borrow_left();
+                while let Some(arg_node) = arg_option {
+                    // execute the node, so that the necessary argument afterwards lies on the stack
+                    // DON'T FOLLOW THE LINKS OF ARGUMENT NODES, OR ARGUMENTS WILL BE EXECUTED MULTIPLE TIMES
+                    bytecode.extend_from_slice(method_bytecode(arg_option, constant_pool, sym_table, params, current_stack, max_stack, false).as_slice());
+
+                    arg_option = arg_node.borrow_link();
                 }
 
                 // write the opcode and the methodref index
@@ -231,10 +194,13 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
                 let method_name = method_entry.name();
                 let methodref_index = *constant_pool.get_index(&CPoolEntry::CONSTANT_Methodref(method_name.to_string())).unwrap();
                 bytecode.extend_from_slice(&methodref_index.to_be_bytes());
+                // finally, a method call consumes the arguments on the stack, so reduce the counter
+                // but, remember that a function may also push a result (if its return type isn't void), so there might be one incremental step as well
+                *current_stack -= argument_count as u16 - if method_entry.result_type().is_some() { 1 } else { 0 };
             }
             SyntaxElement::Assign => {
                 // first execute the right child (the result) which you then use to set the variable in the left child
-                bytecode.extend_from_slice(method_bytecode(node.borrow_right(), constant_pool, sym_table, params).as_slice());
+                bytecode.extend_from_slice(method_bytecode(node.borrow_right(), constant_pool, sym_table, params, current_stack, max_stack, false).as_slice());
                 // now the necessary value should be on the stack, so store it in the variable
                 // for that we need to know what variable, so get the name
                 let var_entry = node.borrow_left().unwrap().get_obj().as_ref().unwrap().deref().borrow();
@@ -264,6 +230,7 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
                     bytecode.push(putstatic as u8);
                     bytecode.extend_from_slice(&pool_index.to_be_bytes());
                 }
+                decrease_stack(current_stack);   // assignment works by using up an item on the stack
             }
             SyntaxElement::Var => {
                 // lay the variable on the stack
@@ -295,6 +262,7 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
                     bytecode.push(getstatic as u8);
                     bytecode.extend_from_slice(&pool_index.to_be_bytes());
                 }
+                increase_stack(current_stack, max_stack);
             }
             SyntaxElement::Const => {
                 // lay the const on the stack
@@ -306,11 +274,12 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
                 // write the opcode and the index into the pool
                 bytecode.push(ldc_w as u8);
                 bytecode.extend_from_slice(&pool_index.to_be_bytes());
+                increase_stack(current_stack,  max_stack);
             }
             SyntaxElement::Binop(op) => {
                 // compute the left child and then the right child and then your actual operation
-                bytecode.extend_from_slice(method_bytecode(node.borrow_left(), constant_pool, sym_table, params).as_slice());
-                bytecode.extend_from_slice(method_bytecode(node.borrow_right(), constant_pool, sym_table, params).as_slice());
+                bytecode.extend_from_slice(method_bytecode(node.borrow_left(), constant_pool, sym_table, params, current_stack, max_stack, false).as_slice());
+                bytecode.extend_from_slice(method_bytecode(node.borrow_right(), constant_pool, sym_table, params, current_stack, max_stack, false).as_slice());
                 fn comparison_via_jump(bytecode: &mut Vec<u8>, compare_op: ByteInstruction) {
                     // comparison operations are a bit more tricky, as there is no direct operation for them
                     // (though there is lcmp which we could utilize, but not without other downsides)
@@ -337,21 +306,23 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
                     Binop::Larger =>        { comparison_via_jump(&mut bytecode, if_icmpgt); }
                     Binop::LargerEqual =>   { comparison_via_jump(&mut bytecode, if_icmpge); }
                 }
+                decrease_stack(current_stack);   // the binop pops two items and the result pushes one -> -1 in total
             }
             SyntaxElement::IfElse => {
                 // handle the whole if-else construction (as there is no individual case for if)
 
                 // first prepare the bytecode for the else-case, so that we know how far we have to jump ahead iff our if-condition is true
-                let bytecode_else = method_bytecode(node.borrow_right(), constant_pool, sym_table, params);
+                let bytecode_else = method_bytecode(node.borrow_right(), constant_pool, sym_table, params, current_stack, max_stack, true);
                 // and also prepare the if-case, so that we know how far we have to jump after executing the else-case
                 let if_node = node.borrow_left().unwrap();
-                let bytecode_if = method_bytecode(if_node.borrow_right(), constant_pool, sym_table, params);
+                let bytecode_if = method_bytecode(if_node.borrow_right(), constant_pool, sym_table, params, current_stack, max_stack, true);
                 // the first thing to write to the bytecode is the execution of the condition, so that its result is ready on the stack
                 // for our if to work with afterwards
-                bytecode.extend_from_slice(method_bytecode(if_node.borrow_left(), constant_pool, sym_table, params).as_slice());
+                bytecode.extend_from_slice(method_bytecode(if_node.borrow_left(), constant_pool, sym_table, params, current_stack, max_stack, false).as_slice());
                 // now either a 1 or a 0 lies on the stack
                 // use ifne to jump over the else-case if it's a 1
                 bytecode.push(ifne as u8);
+                decrease_stack(current_stack);   // ifne pops one item
                 bytecode.extend_from_slice(&((bytecode_else.len() + 6) as i16).to_be_bytes()); // include the 3 bytes necessary for the index and the if itself and 3 bytes for a goto with an index after the else-code to jump over the if-code
                 bytecode.extend_from_slice(bytecode_else.as_slice());
                 // now place a goto to jump over the following if-case
@@ -364,14 +335,15 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
                 // operate similarly as in the IfElse case;
 
                 // prepare the loop bytecode, which we'll need to jump over at some point
-                let bytecode_loop = method_bytecode(node.borrow_right(), constant_pool, sym_table, params);
+                let bytecode_loop = method_bytecode(node.borrow_right(), constant_pool, sym_table, params, current_stack, max_stack, true);
                 // the first thing to write to the bytecode is the execution of the condition, so that its result is ready on the stack
                 // for our if to work with afterwards
-                let bytecode_condition = method_bytecode(node.borrow_left(), constant_pool, sym_table, params);
+                let bytecode_condition = method_bytecode(node.borrow_left(), constant_pool, sym_table, params, current_stack, max_stack, false);
                 bytecode.extend_from_slice(bytecode_condition.as_slice());
                 // now either a 1 or a 0 lies on the stack
                 // use ifeq to jump over the loop-case if it's a 0
                 bytecode.push(ifeq as u8);
+                decrease_stack(current_stack);   // ifeq pops one item
                 bytecode.extend_from_slice(&((bytecode_loop.len() + 6) as i16).to_be_bytes()); // include the 3 bytes necessary for the index and the if itself and 3 bytes for a goto with an index after the loop-code to jump back over the if-code
                 bytecode.extend_from_slice(bytecode_loop.as_slice());
                 // now add a goto to jump back over the while code to the condition
@@ -381,8 +353,9 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
             SyntaxElement::Return => {
                 // if there's a right child this return is an ireturn and the child has to be computed before it can be returned
                 if let Some(ret_value_node) = node.borrow_right() {
-                    bytecode.extend_from_slice(method_bytecode(Some(ret_value_node), constant_pool, sym_table, params).as_slice());
+                    bytecode.extend_from_slice(method_bytecode(Some(ret_value_node), constant_pool, sym_table, params, current_stack, max_stack, false).as_slice());
                     bytecode.push(ireturn as u8);
+                    decrease_stack(current_stack);   // though this is really unnecessary to account for (except for making sure that the stack-counting works)
                 } else {
                     // there's no child, so this is a void return
                     bytecode.push(JVMreturn as u8);
@@ -392,7 +365,11 @@ fn method_bytecode(mut node_option: Option<&Node>, constant_pool: &ConstantPool,
             other => panic!("nonsensical syntax element in bytecode creation: {:?}", other)
         }
 
-        node_option = node.borrow_link();
+        if follow_link {
+            node_option = node.borrow_link();
+        } else {
+            node_option = None;
+        }
     }
     bytecode
 }
@@ -464,6 +441,7 @@ fn max_locals(enter_node: &Node) -> u16 {
     method_table.var_names().len() as u16
 }
 
+/*
 fn max_stack(mut node_option: Option<&Node>) -> u16 {
     // finding the maximum stack height requires walking through the method ast and checking
     // the number of stack entries necessary for each binop and method invocation
@@ -536,6 +514,7 @@ fn max_stack(mut node_option: Option<&Node>) -> u16 {
     }
     max_stack_size as u16
 }
+*/
 
 /// write the number of fields and then the field_info array itself, describing the field
 fn write_fields(bytecode: &mut Vec<u8>, init_node: &Node, sym_table: &SymTable, constant_pool: &ConstantPool) {
@@ -704,7 +683,6 @@ impl ConstantPool {
     fn write_utf8(&mut self, string: &str) -> u16 {
         let entry = CPoolEntry::CONSTANT_Utf8(string.to_string());
         if let Some(index) = self.start_entry(&entry) {
-            //println!("WRITING: {}", string);
             let bytes = string.as_bytes();
             self.buffer.extend_from_slice(&(bytes.len() as u16).to_be_bytes());
             self.buffer.extend_from_slice(bytes);
@@ -878,7 +856,6 @@ impl ConstantPool {
     fn write_CONSTANT_Integer(&mut self, integer: i32) -> u16 {
         let entry = CPoolEntry::CONSTANT_Integer(integer.to_string());
         if let Some(index) = self.start_entry(&entry) {
-            //println!("WRITING int: {}", integer);
             self.buffer.extend_from_slice(&integer.to_be_bytes());
             index
         } else {
