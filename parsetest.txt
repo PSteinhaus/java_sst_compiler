@@ -10,7 +10,7 @@ class Test {
 	int dyn2;
 	int dyn3;
 
-	public void meth1() {
+	public int meth1() {
 		int m1;
 		int m2;
 		int m3;
@@ -31,7 +31,7 @@ class Test {
 			dyn2 = var3;
 
 			if (m3 >= 5) {
-				return;
+				return m2;
 			} else {
 				m2 = m2 - 1;
 			}
@@ -41,7 +41,7 @@ class Test {
 
 		m2 = meth2(meth2(m1,m3), m2);
 
-		return;
+		return m2;
 	}
 
 

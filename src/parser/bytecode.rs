@@ -848,7 +848,6 @@ impl ConstantPool {
     fn write_special_strings(&mut self) {
         self.write_utf8("<clinit>");
         self.write_utf8("()V");
-        self.write_utf8("StackMapTable");
         self.write_utf8("Code");
         self.write_utf8("SourceFile");
         self.write_utf8("ConstantValue");
@@ -873,13 +872,10 @@ impl ConstantPool {
 #[derivative(PartialEq, Hash)]
 enum CPoolEntry {
     CONSTANT_Utf8(String),
-    //CONSTANT_Unicode,
     CONSTANT_Integer(String),
     CONSTANT_Class(String),
-    //CONSTANT_String,
     CONSTANT_Fieldref(String),
     CONSTANT_Methodref(String),
-    //CONSTANT_InterfaceMethodref,
     CONSTANT_NameAndType(String),
 }
 
